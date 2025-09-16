@@ -1,0 +1,17 @@
+ent i;
+ent x;
+ent n;
+
+i=3;
+x=0;
+n=5;
+
+wh {
+	x+=i;
+} (i<n);
+
+si(x==10){
+	x--;
+} sino {
+	x=0;
+}

@@ -1,0 +1,78 @@
+package eval;
+
+import java_cup.runtime.*;
+import alex.AnalizadorLexicoEval;
+import alex.UnidadLexica;
+import alex.TokenValue;
+import errors.GestionErroresEval;
+
+scan with {: return getScanner().next_token(); :};
+parser code {:
+   private GestionErroresEval errores;
+   public void syntax_error(Symbol unidadLexica) {
+     errores.errorSintactico((UnidadLexica)unidadLexica);
+   }
+:};
+init with {:
+   errores = new GestionErroresEval();
+   AnalizadorLexicoEval alex = (AnalizadorLexicoEval)getScanner();
+   alex.fijaGestionErrores(errores);
+:};
+
+package asint;
+
+import java_cup.runtime.*;
+import alex.AnalizadorLexicoTiny;
+import alex.UnidadLexica;
+import errors.GestionErroresTiny;
+
+scan with {: return getScanner().next_token(); :};
+parser code {:
+   private GestionErroresTiny errores;
+   public void syntax_error(Symbol unidadLexica) {
+     errores.errorSintactico((UnidadLexica)unidadLexica);
+   }
+:};
+init with {:
+   errores = new GestionErroresTiny();
+   AnalizadorLexicoTiny alex = (AnalizadorLexicoTiny)getScanner();
+   alex.fijaGestionErrores(errores);
+:};
+
+
+terminal WH, FOR, IDEN, TENT, TDEC, TBOOL, MAS, MENOS, POR, DIV, IGUAL, COMA, PAP, PCIERRE, SI, SINO, PUNTO, CORCHETEAPERTURA, CORCHETECIERRE, PUNTOCOMA, HAZ, MIENTRAS, MAYOR, MENOR, IGIGUAL, INCREMENTO, DECREMENTO, AND, OR;
+
+non terminal , OP0, OP1 ,OP2, OP3, OP4, OP5, OP6, OP7, OP8, OP9, OP10,
+ I, IASIG, IBUCLE, IIF, LINSTR, IIFSINO, EXPR0, EXPR1, EXPR2, EXPR3. EXPR4, EXPR5, EXPR6, EXPR7, EXPR8, EXPR9, EXPR10, EXPR11;
+
+OP0 ::= MAS ;
+OP1 ::= MENOS;
+OP2 ::= POR;
+OP3 ::= DIV ;
+OP4 ::= MAYOR;
+OP5 ::= MENOR;
+OP6 ::= IGIGUAL;
+OP7 ::= INCREMENTO;
+OP8 ::= DECREMENTO;
+OP9 ::= AND;
+OP10 ::= OR;
+
+I ::= IBUCLE | IIF | IDEC |IASIG | IFUNCION ;
+IASIG ::= IDEN IGUAL EXPR0 PUNTOCOMA
+IBUCLE ::= HAZ CORCHETEAPERTURA LINSTR CORCHETECIERRE MIENTRAS PAP EXPR0 PCIERRE PUNTOCOMA | WH CORCHETEAPERTURA LINSTR CORCHETECIERRE PAP EXPR0 PCIERRE PUNTOCOMA | FOR CORCHETEAPERTURA IASIG EXPR0 PCIERRE CORCHETEAPERTURA LINSTR CORCHETECIERRE
+IIF ::= SI PAP EXPR0 PCIERRE CORCHETEAPERTURA LINSTR CORCHETECIERRE
+LINSTR::= I LINSTR PUNTOCOMA | I
+IIFSINO::= IIF SINO CORCHETEAPERTURA LINSTR CORCHETECIERRE
+
+EXPR0 ::= EXPR0 OP0 EXPR1 | EXPR1 // +
+EXPR1 ::= EXPR1 OP1 EXPR2 | EXPR2 // -
+EXPR2 ::= EXPR2 OP2 EXPR3 | EXPR3 // *
+EXPR3 ::= EXPR3 OP3 EXPR4 | EXPR4 // /
+EXPR4 ::= EXPR4 OP4 EXPR5 | EXPR5 // >
+EXPR5 ::= EXPR5 OP5 EXPR6 | EXPR6 // <
+EXPR6 ::= EXPR6 OP6 EXPR7 | EXPR7 // ==
+EXPR7 ::= EXPR7 OP7 | EXPR8 // ++
+EXPR8 ::= EXPR8 OP8 | EXPR9 // --
+EXPR9 ::= EXPR9 OP9 EXPR10 | EXPR10 // &&
+EXPR10 ::= EXPR10 OP10 EXPR11 | EXPR11 // ||
+EXPR11 ::= ID|ENT|REAL

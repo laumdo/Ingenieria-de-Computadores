@@ -1,0 +1,77 @@
+package constructorast;
+
+import java_cup.runtime.*;
+import alex.AnalizadorLexicoExp;
+import alex.UnidadLexica;
+import alex.TokenValue;
+import errors.GestionErroresExp;
+import ast.*;
+
+scan with {: return getScanner().next_token(); :};
+//action code {:
+//   ... add some code to declare and initialize e.g. variables used by the code embedded in the grammar
+//:};
+parser code {:
+   private GestionErroresExp errores;
+   public void syntax_error(Symbol unidadLexica) {
+     errores.errorSintactico((UnidadLexica)unidadLexica);
+   }
+:};
+init with {:
+   errores = new GestionErroresExp();
+   AnalizadorLexicoExp alex = (AnalizadorLexicoExp)getScanner();
+   alex.fijaGestionErrores(errores);
+:};
+
+
+terminal WH, FOR, IDEN, TENT, TDEC, TBOOL, MAS, MENOS, POR, DIV, IGUAL, COMA, PAP, PCIERRE, SI, SINO, PUNTO, CORCHETEAPERTURA, CORCHETECIERRE, PUNTOCOMA, HAZ, MIENTRAS, MAYOR, MENOR, IGIGUAL, INCREMENTO, DECREMENTO, AND, OR;
+
+non terminal , OP0, OP1 ,OP2, OP3, OP4, OP5, OP6, OP7, OP8, OP9, OP10,
+ I, IASIG, IBUCLE, IIF, LINSTR, IIFSINO, EXPR0, EXPR1, EXPR2, EXPR3. EXPR4, EXPR5, EXPR6, EXPR7, EXPR8, EXPR9, EXPR10, EXPR11;
+
+LINSTR::= I LINSTR PUNTOCOMA | I
+I ::= IBUCLE | IIF | IDEC |IASIG | IFUNCION ;
+IASIG ::= IDEN: id IGUAL EXPR0: e0 PUNTOCOMA
+  {: RESULT = new IASIGNA(id,e0); :};
+IBUCLE ::= HAZ CORCHETEAPERTURA LINSTR: l0 CORCHETECIERRE MIENTRAS PAP EXPR0: e0 PCIERRE PUNTOCOMA | WH CORCHETEAPERTURA LINSTR CORCHETECIERRE PAP EXPR0 PCIERRE PUNTOCOMA | FOR CORCHETEAPERTURA IASIG EXPR0 PCIERRE CORCHETEAPERTURA LINSTR CORCHETECIERRE
+{: RESULT = new IBUCLE(l0,e0); :};
+IIF ::= SI PAP EXPR0: e0 PCIERRE CORCHETEAPERTURA LINSTR: l0 CORCHETECIERRE
+{: RESULT = new IIF(e0,l0); :};
+IIFSINO::= IIF SINO CORCHETEAPERTURA LINSTR: l0 CORCHETECIERRE
+{: RESULT = new IIFSINO(e0,l0); :};
+
+OP0 ::= MAS ;
+OP1 ::= MENOS;
+OP2 ::= POR;
+OP3 ::= DIV ;
+OP4 ::= MAYOR;
+OP5 ::= MENOR;
+OP6 ::= IGIGUAL;
+OP7 ::= INCREMENTO;
+OP8 ::= DECREMENTO;
+OP9 ::= AND;
+OP10 ::= OR;
+
+EXPR0 ::= EXPR0: e0 OP0 EXPR1: e1 | EXPR1: e1 // +
+  {: RESULT = new EBin(e0,e1); :};
+EXPR1 ::= EXPR1: e1 OP1 EXPR2: e2 | EXPR2: e2 // -
+  {: RESULT = new EBin(e0,e1); :};
+EXPR2 ::= EXPR2: e2 OP2 EXPR3: e3 | EXPR3: e3 // *
+  {: RESULT = new EBin(e2,e3); :};
+EXPR3 ::= EXPR3: e3 OP3 EXPR4: e4 | EXPR4: e4 // /
+  {: RESULT = new EBin(e3,e4); :};
+EXPR4 ::= EXPR4: e4 OP4 EXPR5: e5 | EXPR5: e5 // >
+  {: RESULT = new EBin(e4,e5); :};
+EXPR5 ::= EXPR5: e5 OP5 EXPR6: e6 | EXPR6: e6 // <
+  {: RESULT = new EBin(e5,e6); :};
+EXPR6 ::= EXPR6: e6 OP6 EXPR7: e7 | EXPR7: e7 // ==
+  {: RESULT = new EBin(e0,e1); :};
+EXPR7 ::= EXPR7: e7 OP7 | EXPR8: e8 // ++
+  {: RESULT = new EPostfijo(e7); :};
+EXPR8 ::= EXPR8: e8 OP8 | EXPR9: e9 // --
+  {: RESULT = new EPostfijo(e8); :};
+EXPR9 ::= EXPR9: e9 OP9 EXPR10: e10 | EXPR10 : e10// &&
+  {: RESULT = new EBin(e9,e10); :};
+EXPR10 ::= EXPR10: e10 OP10 EXPR11: e11 | EXPR11: e11 // ||
+  {: RESULT = new EBin(e10,e11); :};
+EXPR11 ::= ID|ENT|REAL

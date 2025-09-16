@@ -1,0 +1,306 @@
+//LAURA
+#include <iostream>
+#include <ctime> //Se usa con frecuencia para conocer el tiempo exacto durante un programa.
+#include <string> //Generalización de las cadenas alfanuméricas para albergar cadenas de objetos.
+#include <cstdlib>
+#include <iomanip>
+#include <cmath>
+
+using namespace std;
+
+//Declaración de constantes:
+const int LIM_INF_HAB = 1;
+const int LIM_SUP_HAB = 2;
+const int LIM_INF_VEL = 1;
+const int LIM_SUP_VEL = 3;
+const int ANCHO_PISTA = 7;
+const bool JUEGO_ALEATORIO = false;
+const bool MODO_DEBUG = true;
+
+//Prototipos de funciones:
+void introducirDatos(string& iniciales, int& habilidad, int& velocidad);
+int saqueAleatorio(string iniciales_t1, string iniciales_t2);
+string marcador(int puntuacion);
+void pintarMarcador(string t_1, string t_2, int puntuacion_t1, int puntuacion_t2);
+int golpeoBola(int posicion_tenista, int habilidad);
+int correTenista(int posicion_tenista, int velocidad, int posicion_bola);
+int peloteo(string t_1, string t_2, int jugador_actual, int habilidad_t1, int habilidad_t2, int velocidad_t1, int velocidad_t2);
+
+int main() {
+	string iniciales_t1, iniciales_t2;
+	int habilidad_t1 = 0, habilidad_t2 = 0, velocidad_t1 = 0, velocidad_t2 = 0;
+	int saque, puntuacion_t1 = 0, puntuacion_t2 = 0;
+
+	cout << "Bienvenido al simulador de tenis." << endl;
+	cout << endl;
+	//Pedimos a los jugadrores que introduzcan sus datos.
+	cout << "Introduzca los datos del jugador 1: " << endl;
+	introducirDatos(iniciales_t1, habilidad_t1, velocidad_t1);
+	cout << endl;
+	cout << "Introduzca los datos del jugador 2: " << endl;
+	introducirDatos(iniciales_t2, habilidad_t2, velocidad_t2);
+	//Determinar aleatoriamente el saque.
+	saque = saqueAleatorio(iniciales_t1, iniciales_t2);
+	cout << endl;
+	//Mostrar los marcadores
+	pintarMarcador(iniciales_t1, iniciales_t2, puntuacion_t1, puntuacion_t2);
+	//Jugar punto
+	peloteo(iniciales_t1, iniciales_t2, saque, habilidad_t1, habilidad_t2, velocidad_t1, velocidad_t2);
+	cout << endl;
+	cout << "El juego ha terminado,gracias por participar!" << endl;
+
+	return 0;
+}
+
+int saqueAleatorio(string iniciales_t1, string iniciales_t2) {
+	int saque;
+	string jugador_actual;
+
+	srand(time(NULL)); // se utiliza la biblioteca <ctime>
+	saque = rand() % 2; // generará un numero entre 0 y 1 (si queremos entre 0,1 y 2:rand()%2+1
+	if (saque == 0) {
+		jugador_actual = iniciales_t1;
+		cout << "Servicio para: " << iniciales_t1 << endl;
+	}
+	if (saque == 1) {
+		jugador_actual = iniciales_t2;
+		cout << "Servicio para: " << iniciales_t2 << endl;
+	}
+	return saque;
+}
+
+void introducirDatos(string& iniciales, int& habilidad, int& velocidad) {
+	cout << "- Introduzca sus iniciales (solo 3 letras): " ;
+	cin >> iniciales;
+
+	cout << "- Introduzca su habilidad (valor entre 1 y 2): " ;
+	cin >> habilidad;
+	while (habilidad<LIM_INF_HAB || habilidad>LIM_SUP_HAB) {
+		cout << "El valor no es valido, vuelva a intentarlo: " ;
+		cin >> habilidad;
+	}
+
+	cout << "- Introduzca su velocidad (valor entre 1 y 3): " ;
+	cin >> velocidad;
+	while (velocidad<LIM_INF_VEL || velocidad>LIM_SUP_VEL) {
+		cout << "El valor no es valido, vuelva a intentarlo: " ;
+		cin >> velocidad;
+	}
+}
+
+string marcador(int puntuacion) {
+	string puntos;
+	if (puntuacion == 0) {
+		puntos = "00";
+	}
+	if (puntuacion == 1) {
+		puntos = "15";
+	}
+	if (puntuacion == 2) {
+		puntos = "30";
+	}
+	if (puntuacion == 3) {
+		puntos = "40";
+	}
+	if (puntuacion == 4) {
+		puntos = "Ad";
+	}
+	return puntos;
+}
+
+void pintarMarcador(string t_1, string t_2, int puntuacion_t1, int puntuacion_t2) {
+	string marcador_t1, marcador_t2;
+	marcador_t1 = marcador(puntuacion_t1);
+	marcador_t2 = marcador(puntuacion_t2);
+
+	cout << t_1 << " " << marcador_t1 << " - " << " " << marcador_t2 << " " << t_2 << endl;
+}
+
+int golpeoBola(int posicion_tenista, int habilidad) {
+	int calle_destino, distancia, num_aleatorio, desviacion;
+	double prob_acierto;
+
+	if (JUEGO_ALEATORIO == true) { //se genera aleatoriamente el destino de la bola
+		calle_destino = rand() % 8;
+	}
+	else if (JUEGO_ALEATORIO == false) {
+		cin >> calle_destino; //el jugador introduce la calle a la que desea enviar la bola
+		if (MODO_DEBUG == true) {
+			cout << "\n El jugador dispara hacia la calle " << calle_destino << endl;
+		}
+	}
+	if ((calle_destino < 1) || (calle_destino > ANCHO_PISTA)) {
+		if (MODO_DEBUG == true) {
+			cout << "\n La bola ha salido del campo" << endl;
+		}
+		//calle_destino = calle_destino;
+	}
+	else {
+		distancia = abs(calle_destino - posicion_tenista);
+		if (distancia <= habilidad) {
+			calle_destino = calle_destino;
+			if (MODO_DEBUG == true) {
+				cout << "\n Ese ha sido un tiro sencillo" << endl;
+				cout << "\n La bola llega a la casilla " << calle_destino << endl;
+			}
+		}
+		else if (distancia > habilidad) {
+			prob_acierto = 100 - ((calle_destino - habilidad) / ((ANCHO_PISTA - 1) - LIM_INF_HAB)) * 100;
+			num_aleatorio = rand() % 99 + 1;
+			if (num_aleatorio < prob_acierto) {
+				calle_destino = calle_destino;
+				if (MODO_DEBUG == true) {
+					cout << "\n Tiro complicado que... (probab_exito= " << prob_acierto << " y resultado = " << num_aleatorio << ") Llega a su destino!" << endl;
+					cout << "\n La bola llega a la casilla " << calle_destino << endl;
+				}
+			}
+			else { //se puede eliminar el if anterior y poer este con condicion (num_aleatorio>prob)
+				desviacion = rand() % 2;
+				if (desviacion == 0) {
+					calle_destino = calle_destino + 1; //la bola se desvía a la derecha
+				}
+				if (desviacion == 1) {
+					calle_destino = calle_destino - 1; //la bola se desvía a la derecha
+				}
+				if (MODO_DEBUG == true) {
+					cout << "\n Tiro complicado que... (probab_exito= " << prob_acierto << " y resultado = " << num_aleatorio << ") No ha sido preciso!" << endl;
+					cout << "\n La bola acaba en la casilla " << calle_destino << endl;
+				}
+			}
+		}
+	}
+
+	return calle_destino;
+}
+
+int correTenista(int posicion_tenista, int velocidad, int posicion_bola) {
+	int distancia_jugador_bola;
+
+	distancia_jugador_bola = abs(posicion_tenista - posicion_bola);
+	if (velocidad >= distancia_jugador_bola) {
+		posicion_tenista = posicion_bola;
+	}
+	else { //si la distancia es > velocidad, el jugador no llega a la bola, pero corre en su dirección
+		if (posicion_bola < posicion_tenista) {
+			posicion_tenista = posicion_tenista - velocidad;
+		}
+		if (posicion_bola > posicion_tenista) {
+			posicion_tenista = posicion_tenista + velocidad;
+		}
+		if (MODO_DEBUG == true) {
+			cout << "\n Su rival no llega a la bola." << endl;
+		}
+	}
+
+	return posicion_tenista; //devuelve la posición a la que llega el tenista que va a por la pelota
+}
+
+int peloteo(string t_1, string t_2, int jugador_actual, int habilidad_t1, int habilidad_t2, int velocidad_t1, int velocidad_t2) {
+	int pos_t1 = 4, pos_t2 = 4, pos_bola = 4;
+	int puntuacion_j1 = 0, puntuacion_j2 = 0;
+	bool fin_partido = false;
+
+	do {
+		if (jugador_actual == 0) { //empieza sacando el jugador 1
+			if (MODO_DEBUG == true) {
+				cout << t_1 << " en casilla " << pos_t1 << " y " << t_2 << " en casilla " << pos_t2 << endl;
+			}
+			cout << "Golpea " << t_1 << endl;
+			pos_bola = golpeoBola(pos_t1, habilidad_t1); //realiza el saque
+
+			if (pos_bola > 0 && pos_bola <= ANCHO_PISTA) { //mientras la bola se encuentre en el campo
+				pos_t2 = correTenista(pos_t2, velocidad_t2, pos_bola); //el rival corre en dirección a la bola
+
+				if (pos_t2 != pos_bola) {
+					if (MODO_DEBUG == true) {
+						cout << t_1 << " acaba en casilla " << pos_t1 << " y " << t_2 << " en casilla " << pos_t2 << endl;
+					}
+					cout << "Punto para " << t_1 << "!!!" << endl;
+					puntuacion_j1 += 1;
+					puntuacion_j2 += 0;
+					pintarMarcador(t_1, t_2, puntuacion_j1, puntuacion_j2);
+
+
+					system("pause");
+				}
+				else if (pos_t2 == pos_bola) {
+					fin_partido = true;
+					jugador_actual = 1; //Se cambia quien empieza el siguiente saque
+					pos_bola = pos_t2;
+					cout << "Su rival llega a la bola" << endl;
+				}
+			}
+			else if (pos_bola <= 0 || pos_bola > ANCHO_PISTA) {
+				cout << "El jugador ha enviado la pelota fuera del campo" << endl;
+				if (MODO_DEBUG == true) {
+					cout << t_1 << " acaba en casilla " << pos_t1 << " y " << t_2 << " en casilla " << pos_t2 << endl;
+				}
+				cout << "Punto para " << t_2 << "!!!" << endl;
+				pos_t1 = 4;
+				pos_t2 = 4;
+				pos_bola = 4;
+
+				puntuacion_j2 += 1;
+				puntuacion_j1 += 0;
+				pintarMarcador(t_1, t_2, puntuacion_j1, puntuacion_j2);
+
+				jugador_actual = 1;
+				system("pause");
+			}
+		}
+		if (jugador_actual == 1) {//empieza sacando el jugador 2
+			if (MODO_DEBUG == true) {
+				cout << t_1 << " en casilla " << pos_t1 << " y " << t_2 << " en casilla " << pos_t2 << endl;
+			}
+			cout << "Golpea " << t_2 << endl;
+			pos_bola = golpeoBola(pos_t2, habilidad_t2); //realiza el saque
+
+			if (pos_bola > 0 && pos_bola <= ANCHO_PISTA) { //mientras la bola se encuentre en el campo
+				pos_t1 = correTenista(pos_t1, velocidad_t1, pos_bola); //el rival corre en dirección a la bola
+
+				if (pos_t1 != pos_bola) {
+					if (MODO_DEBUG == true) {
+						cout << t_1 << " acaba en casilla " << pos_t1 << " y " << t_2 << " en casilla " << pos_t2 << endl;
+					}
+					cout << "Punto para " << t_2 << "!!!" << endl;
+					puntuacion_j2 += 1;
+					puntuacion_j1 += 0;
+					cout << endl;
+					pintarMarcador(t_1, t_2, puntuacion_j1, puntuacion_j2);
+					system("pause");
+				}
+				else if (pos_t1 == pos_bola) {
+					fin_partido = true;
+					jugador_actual = 0; //Se cambia quien empieza el siguiente saque
+					pos_bola = pos_t1;
+					cout << "Su rival llega a la bola" << endl;
+				}
+			}
+			else if (pos_bola <= 0 || pos_bola > ANCHO_PISTA) {
+				cout << "El jugador ha enviado la pelota fuera del campo" << endl;
+				if (MODO_DEBUG == true) {
+					cout << t_1 << " acaba en casilla " << pos_t1 << " y " << t_2 << " en casilla " << pos_t2 << endl;
+				}
+				cout << "Punto para " << t_1 << "!!!" << endl;
+				pos_t1 = 4;
+				pos_t2 = 4;
+				pos_bola = 4;
+				puntuacion_j1 += 1;
+				puntuacion_j2 += 0;
+				pintarMarcador(t_1, t_2, puntuacion_j1, puntuacion_j2);
+				cout << endl;
+
+				jugador_actual = 0;
+				system("pause");
+			}
+		}
+	} while ((((puntuacion_j1 < 3) && (puntuacion_j2 < 4)) || ((puntuacion_j1 < 4) && (puntuacion_j2 < 3))) || (((puntuacion_j1 == 3) && (puntuacion_j2 == 3)) || (((puntuacion_j1 == 4) && (puntuacion_j2 == 3)) || ((puntuacion_j1 == 3) && (puntuacion_j2 == 4)))));
+
+	if (puntuacion_j1 > puntuacion_j2) {
+		cout << "El ganador del juego es " << t_1 << endl;
+	}
+	if (puntuacion_j1 < puntuacion_j2) {
+		cout << "El ganador del juego es " << t_2 << endl;
+	}
+	return 0;
+}

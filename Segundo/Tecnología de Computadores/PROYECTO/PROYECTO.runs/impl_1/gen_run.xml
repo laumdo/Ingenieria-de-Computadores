@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenRun Id="impl_1" LaunchPart="xc7a35tcpg236-1" LaunchTime="1707132709">
+  <File Type="ROUTE-PWR" Name="sintesis_power_routed.rpt"/>
+  <File Type="PA-TCL" Name="sintesis.tcl"/>
+  <File Type="ROUTE-PWR-SUM" Name="sintesis_power_summary_routed.pb"/>
+  <File Type="REPORTS-TCL" Name="sintesis_reports.tcl"/>
+  <File Type="OPT-RQA-PB" Name="sintesis_rqa_opted.pb"/>
+  <File Type="BITSTR-MMI" Name="sintesis.mmi"/>
+  <File Type="OPT-METHODOLOGY-DRC" Name="sintesis_methodology_drc_opted.rpt"/>
+  <File Type="INIT-TIMING" Name="sintesis_timing_summary_init.rpt"/>
+  <File Type="OPT-TIMING" Name="sintesis_timing_summary_opted.rpt"/>
+  <File Type="OPT-DCP" Name="sintesis_opt.dcp"/>
+  <File Type="OPT-DRC" Name="sintesis_drc_opted.rpt"/>
+  <File Type="OPT-HWDEF" Name="sintesis.hwdef"/>
+  <File Type="PWROPT-DCP" Name="sintesis_pwropt.dcp"/>
+  <File Type="PWROPT-DRC" Name="sintesis_drc_pwropted.rpt"/>
+  <File Type="PWROPT-TIMING" Name="sintesis_timing_summary_pwropted.rpt"/>
+  <File Type="PLACE-DCP" Name="sintesis_placed.dcp"/>
+  <File Type="PLACE-IO" Name="sintesis_io_placed.rpt"/>
+  <File Type="PLACE-CLK" Name="sintesis_clock_utilization_placed.rpt"/>
+  <File Type="PLACE-UTIL" Name="sintesis_utilization_placed.rpt"/>
+  <File Type="PLACE-UTIL-PB" Name="sintesis_utilization_placed.pb"/>
+  <File Type="PLACE-CTRL" Name="sintesis_control_sets_placed.rpt"/>
+  <File Type="PLACE-SIMILARITY" Name="sintesis_incremental_reuse_placed.rpt"/>
+  <File Type="PLACE-PRE-SIMILARITY" Name="sintesis_incremental_reuse_pre_placed.rpt"/>
+  <File Type="BG-BIN" Name="sintesis.bin"/>
+  <File Type="PLACE-TIMING" Name="sintesis_timing_summary_placed.rpt"/>
+  <File Type="ROUTE-PWR-RPX" Name="sintesis_power_routed.rpx"/>
+  <File Type="PLACE-RQA-PB" Name="sintesis_rqa_placed.pb"/>
+  <File Type="POSTPLACE-PWROPT-DCP" Name="sintesis_postplace_pwropt.dcp"/>
+  <File Type="BITSTR-MSK" Name="sintesis.msk"/>
+  <File Type="POSTPLACE-PWROPT-TIMING" Name="sintesis_timing_summary_postplace_pwropted.rpt"/>
+  <File Type="PHYSOPT-DCP" Name="sintesis_physopt.dcp"/>
+  <File Type="PHYSOPT-DRC" Name="sintesis_drc_physopted.rpt"/>
+  <File Type="BITSTR-RBT" Name="sintesis.rbt"/>
+  <File Type="PHYSOPT-TIMING" Name="sintesis_timing_summary_physopted.rpt"/>
+  <File Type="ROUTE-ERROR-DCP" Name="sintesis_routed_error.dcp"/>
+  <File Type="ROUTE-DCP" Name="sintesis_routed.dcp"/>
+  <File Type="ROUTE-BLACKBOX-DCP" Name="sintesis_routed_bb.dcp"/>
+  <File Type="ROUTE-DRC" Name="sintesis_drc_routed.rpt"/>
+  <File Type="ROUTE-DRC-PB" Name="sintesis_drc_routed.pb"/>
+  <File Type="ROUTE-DRC-RPX" Name="sintesis_drc_routed.rpx"/>
+  <File Type="ROUTE-METHODOLOGY-DRC" Name="sintesis_methodology_drc_routed.rpt"/>
+  <File Type="ROUTE-METHODOLOGY-DRC-RPX" Name="sintesis_methodology_drc_routed.rpx"/>
+  <File Type="ROUTE-METHODOLOGY-DRC-PB" Name="sintesis_methodology_drc_routed.pb"/>
+  <File Type="ROUTE-RQS-PB" Name="sintesis_rqs_routed.pb"/>
+  <File Type="ROUTE-STATUS" Name="sintesis_route_status.rpt"/>
+  <File Type="ROUTE-STATUS-PB" Name="sintesis_route_status.pb"/>
+  <File Type="ROUTE-TIMINGSUMMARY" Name="sintesis_timing_summary_routed.rpt"/>
+  <File Type="ROUTE-TIMING-PB" Name="sintesis_timing_summary_routed.pb"/>
+  <File Type="ROUTE-TIMING-RPX" Name="sintesis_timing_summary_routed.rpx"/>
+  <File Type="ROUTE-SIMILARITY" Name="sintesis_incremental_reuse_routed.rpt"/>
+  <File Type="ROUTE-CLK" Name="sintesis_clock_utilization_routed.rpt"/>
+  <File Type="ROUTE-BUS-SKEW" Name="sintesis_bus_skew_routed.rpt"/>
+  <File Type="ROUTE-BUS-SKEW-PB" Name="sintesis_bus_skew_routed.pb"/>
+  <File Type="ROUTE-BUS-SKEW-RPX" Name="sintesis_bus_skew_routed.rpx"/>
+  <File Type="POSTROUTE-PHYSOPT-DCP" Name="sintesis_postroute_physopt.dcp"/>
+  <File Type="POSTROUTE-PHYSOPT-BLACKBOX-DCP" Name="sintesis_postroute_physopt_bb.dcp"/>
+  <File Type="POSTROUTE-PHYSOPT-TIMING" Name="sintesis_timing_summary_postroute_physopted.rpt"/>
+  <File Type="POSTROUTE-PHYSOPT-TIMING-PB" Name="sintesis_timing_summary_postroute_physopted.pb"/>
+  <File Type="POSTROUTE-PHYSOPT-TIMING-RPX" Name="sintesis_timing_summary_postroute_physopted.rpx"/>
+  <File Type="POSTROUTE-PHYSOPT-BUS-SKEW" Name="sintesis_bus_skew_postroute_physopted.rpt"/>
+  <File Type="BG-BIT" Name="sintesis.bit"/>
+  <File Type="POSTROUTE-PHYSOPT-BUS-SKEW-PB" Name="sintesis_bus_skew_postroute_physopted.pb"/>
+  <File Type="POSTROUTE-PHYSOPT-BUS-SKEW-RPX" Name="sintesis_bus_skew_postroute_physopted.rpx"/>
+  <File Type="BITSTR-NKY" Name="sintesis.nky"/>
+  <File Type="BITSTR-BMM" Name="sintesis_bd.bmm"/>
+  <File Type="PDI-FILE" Name="sintesis.pdi"/>
+  <File Type="BOOT-PDI-FILE" Name="sintesis_soc.pdi"/>
+  <File Type="PL-PDI-FILE" Name="sintesis_pld.pdi"/>
+  <File Type="RCFI_FILE" Name="sintesis.rcfi"/>
+  <File Type="CFI_FILE" Name="sintesis.cfi"/>
+  <File Type="RNPI_FILE" Name="sintesis.rnpi"/>
+  <File Type="NPI_FILE" Name="sintesis.npi"/>
+  <File Type="RBD_FILE" Name="sintesis.rbd"/>
+  <File Type="BITSTR-LTX" Name="debug_nets.ltx"/>
+  <File Type="BITSTR-LTX" Name="sintesis.ltx"/>
+  <File Type="BITSTR-SYSDEF" Name="sintesis.sysdef"/>
+  <File Type="BG-BGN" Name="sintesis.bgn"/>
+  <File Type="BG-DRC" Name="sintesis.drc"/>
+  <File Type="RDI-RDI" Name="sintesis.vdi"/>
+  <File Type="WBT-USG" Name="usage_statistics_webtalk.html"/>
+  <File Type="ROUTE-RQS" Name="sintesis_routed.rqs"/>
+  <File Type="POSTROUTE-PHYSOPT-RQS" Name="sintesis_postroute_physopted.rqs"/>
+  <File Type="ROUTE-RQS-RPT" Name="route_report_qor_suggestions_0.rpt"/>
+  <File Type="POSTROUTE-PHYSOPT-RQS-RPT" Name="postroute_physopt_report_qor_suggestions_0.rpt"/>
+  <FileSet Name="sources" Type="DesignSrcs" RelSrcDir="$PSRCDIR/sources_1" RelGenDir="$PGENDIR/sources_1">
+    <Filter Type="Srcs"/>
+    <File Path="$PSRCDIR/sources_1/new/comparador.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/conv.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/debouncer.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/displays.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/gana.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/generadorAleatorio.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/juego.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/pierde.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/registro.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <File Path="$PSRCDIR/sources_1/new/sintesis.vhd">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
+    <Config>
+      <Option Name="DesignMode" Val="RTL"/>
+      <Option Name="TopModule" Val="sintesis"/>
+      <Option Name="TopAutoSet" Val="TRUE"/>
+    </Config>
+  </FileSet>
+  <FileSet Name="constrs_in" Type="Constrs" RelSrcDir="$PSRCDIR/constrs_1" RelGenDir="$PGENDIR/constrs_1">
+    <Filter Type="Constrs"/>
+    <File Path="$PSRCDIR/constrs_1/new/Basys3_Master.xdc">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="implementation"/>
+      </FileInfo>
+    </File>
+    <Config>
+      <Option Name="ConstrsType" Val="XDC"/>
+    </Config>
+  </FileSet>
+  <FileSet Name="utils" Type="Utils" RelSrcDir="$PSRCDIR/utils_1" RelGenDir="$PGENDIR/utils_1">
+    <Filter Type="Utils"/>
+    <File Path="$PSRCDIR/utils_1/imports/synth_1/juego.dcp">
+      <FileInfo>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="implementation"/>
+        <Attr Name="UsedInSteps" Val="synth_1"/>
+        <Attr Name="AutoDcp" Val="1"/>
+      </FileInfo>
+    </File>
+    <Config>
+      <Option Name="TopAutoSet" Val="TRUE"/>
+    </Config>
+  </FileSet>
+  <Strategy Version="1" Minor="2">
+    <StratHandle Name="Vivado Implementation Defaults" Flow="Vivado Implementation 2023"/>
+    <Step Id="init_design"/>
+    <Step Id="opt_design"/>
+    <Step Id="power_opt_design"/>
+    <Step Id="place_design"/>
+    <Step Id="post_place_power_opt_design"/>
+    <Step Id="phys_opt_design"/>
+    <Step Id="route_design"/>
+    <Step Id="post_route_phys_opt_design"/>
+    <Step Id="write_bitstream"/>
+  </Strategy>
+</GenRun>

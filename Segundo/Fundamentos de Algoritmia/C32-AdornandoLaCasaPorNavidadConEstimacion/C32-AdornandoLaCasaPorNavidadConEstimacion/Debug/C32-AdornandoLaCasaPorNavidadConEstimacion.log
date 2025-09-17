@@ -1,0 +1,4 @@
+﻿  PlantillaJuezCasosIlimitados.cpp
+C:\Users\oldeo\Desktop\Laura\Uni\4º año\FAL\C32-AdornandoLaCasaPorNavidadConEstimacion\C32-AdornandoLaCasaPorNavidadConEstimacion\PlantillaJuezCasosIlimitados.cpp(34,23): warning C4018: '<': signed/unsigned mismatch
+C:\Users\oldeo\Desktop\Laura\Uni\4º año\FAL\C32-AdornandoLaCasaPorNavidadConEstimacion\C32-AdornandoLaCasaPorNavidadConEstimacion\PlantillaJuezCasosIlimitados.cpp(130,39): warning C4018: '<': signed/unsigned mismatch
+  C32-AdornandoLaCasaPorNavidadConEstimacion.vcxproj -> C:\Users\oldeo\Desktop\Laura\Uni\4º año\FAL\C32-AdornandoLaCasaPorNavidadConEstimacion\Debug\C32-AdornandoLaCasaPorNavidadConEstimacion.exe

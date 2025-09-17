@@ -1,0 +1,5 @@
+﻿  SolProfe.cpp
+  Source.cpp
+E:\ED NUEVO\8.4 Pokemons\SolProfe.cpp(92,74): error C2039: "nombre": no es un miembro de "CentroPokemon::InfoEntrenador"
+E:\ED NUEVO\8.4 Pokemons\SolProfe.cpp(92,131): error C2039: "nivel": no es un miembro de "CentroPokemon::InfoEntrenador"
+  Generando código...

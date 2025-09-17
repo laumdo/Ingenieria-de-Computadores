@@ -1,0 +1,285 @@
+
+pr3_a.elf:     file format elf32-littleriscv
+pr3_a.elf
+architecture: riscv:rv32, flags 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+start address 0x00000000
+
+Program Header:
+    LOAD off    0x00001000 vaddr 0x00000000 paddr 0x00000000 align 2**12
+         filesz 0x000000f8 memsz 0x000000f8 flags r-x
+    LOAD off    0x00002000 vaddr 0x00010000 paddr 0x00010000 align 2**12
+         filesz 0x00000020 memsz 0x00000024 flags rw-
+
+Sections:
+Idx Name              Size      VMA       LMA       File off  Algn  Flags
+  0 .text             000000f8  00000000  00000000  00001000  2**2  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .data             00000020  00010000  00010000  00002000  2**0  CONTENTS, ALLOC, LOAD, DATA
+  2 .bss              00000004  00010020  00010020  00002020  2**0  ALLOC
+  3 .riscv.attributes 0000001f  00000000  00000000  00002020  2**0  CONTENTS, READONLY
+  4 .debug_line       00000187  00000000  00000000  0000203f  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+  5 .debug_info       00000026  00000000  00000000  000021c6  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+  6 .debug_abbrev     00000014  00000000  00000000  000021ec  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+  7 .debug_aranges    00000020  00000000  00000000  00002200  2**3  CONTENTS, READONLY, DEBUGGING, OCTETS
+  8 .debug_str        00000037  00000000  00000000  00002220  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+SYMBOL TABLE:
+00000000 l    d  .text	00000000 .text
+00010000 l    d  .data	00000000 .data
+00010020 l    d  .bss	00000000 .bss
+00000000 l    d  .riscv.attributes	00000000 .riscv.attributes
+00000000 l    d  .debug_line	00000000 .debug_line
+00000000 l    d  .debug_info	00000000 .debug_info
+00000000 l    d  .debug_abbrev	00000000 .debug_abbrev
+00000000 l    d  .debug_aranges	00000000 .debug_aranges
+00000000 l    d  .debug_str	00000000 .debug_str
+00000000 l    df *ABS*	00000000 ./pr3_a.o
+00000004 l       *ABS*	00000000 N
+00010000 l       .data	00000000 A
+00010010 l       .data	00000000 B
+00010020 l       .bss	00000000 res
+00000068 l       .text	00000000 dotprod
+00000048 l       .text	00000000 if
+00000058 l       .text	00000000 else
+00000064 l       .text	00000000 fin
+00000098 l       .text	00000000 for
+000000bc l       .text	00000000 return_dotprod
+000000e0 l       .text	00000000 mul
+000000ac l       .text	00000000 sigue_bucle
+000000e4 l       .text	00000000 while_mul
+000000f4 l       .text	00000000 return_mul
+00000000 g       .text	00000000 main
+00020000 g       *ABS*	00000000 _stack
+
+
+
+Disassembly of section .text:
+
+00000000 <main>:
+main():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:63
+.bss
+	res: .space 4
+
+.text
+main:
+	la sp, _stack //inicializa sp
+   0:	00020117          	auipc	sp,0x20
+   4:	00010113          	mv	sp,sp
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:64
+	la a0, A //1er argumento: dir de A
+   8:	00010517          	auipc	a0,0x10
+   c:	ff850513          	addi	a0,a0,-8 # 10000 <A>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:65
+	la a1, A //2º argumento: dir de A
+  10:	00010597          	auipc	a1,0x10
+  14:	ff058593          	addi	a1,a1,-16 # 10000 <A>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:66
+	la a2, N //3er argumento: N
+  18:	00400613          	li	a2,4
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:67
+	call dotprod //llama a dotprod
+  1c:	04c000ef          	jal	ra,68 <dotprod>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:68
+	mv s0, a0 //s0 guarda normA
+  20:	00050413          	mv	s0,a0
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:70
+
+	la a0, B //1er argumento: dir de B
+  24:	00010517          	auipc	a0,0x10
+  28:	fec50513          	addi	a0,a0,-20 # 10010 <B>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:71
+	la a1, B //2º argumento: dir de B
+  2c:	00010597          	auipc	a1,0x10
+  30:	fe458593          	addi	a1,a1,-28 # 10010 <B>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:72
+	la a2, N //3er argumento: N
+  34:	00400613          	li	a2,4
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:73
+	call dotprod //llama a dotprod
+  38:	030000ef          	jal	ra,68 <dotprod>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:74
+	mv s1, a0 //s1 guarda normB
+  3c:	00050493          	mv	s1,a0
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:76
+
+	la t0, res
+  40:	00010297          	auipc	t0,0x10
+  44:	fe028293          	addi	t0,t0,-32 # 10020 <res>
+
+00000048 <if>:
+if():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:79
+
+if:
+	ble s0, s1, else //normA>normB
+  48:	0084d863          	bge	s1,s0,58 <else>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:80
+	li s2, 10 //cargo 10 (0xa)
+  4c:	00a00913          	li	s2,10
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:81
+	sw s2, 0(t0) //guardo res
+  50:	0122a023          	sw	s2,0(t0)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:82
+	j fin
+  54:	0100006f          	j	64 <fin>
+
+00000058 <else>:
+else():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:84
+else:
+	li s0, 11 //cargo 11 (0xb)
+  58:	00b00413          	li	s0,11
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:85
+	sw s2, 0(t0) //guardo res
+  5c:	0122a023          	sw	s2,0(t0)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:86
+	j fin
+  60:	0040006f          	j	64 <fin>
+
+00000064 <fin>:
+fin():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:88
+fin:
+	j fin
+  64:	0000006f          	j	64 <fin>
+
+00000068 <dotprod>:
+dotprod():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:91
+
+dotprod:
+	addi sp, sp, -24
+  68:	fe810113          	addi	sp,sp,-24 # 1ffe8 <res+0xffc8>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:93
+	//Prólogo:
+	sw ra, 20(sp)
+  6c:	00112a23          	sw	ra,20(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:94
+	sw s0, 16(sp)
+  70:	00812823          	sw	s0,16(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:95
+	sw s1, 12(sp)
+  74:	00912623          	sw	s1,12(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:96
+	sw s2, 8(sp)
+  78:	01212423          	sw	s2,8(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:97
+	sw s3, 4(sp)
+  7c:	01312223          	sw	s3,4(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:98
+	sw s4, 0(sp)
+  80:	01412023          	sw	s4,0(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:99
+	li s0, 0 //s0 guarda acc
+  84:	00000413          	li	s0,0
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:100
+	li s1, 0 //s1 guarda i
+  88:	00000493          	li	s1,0
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:101
+	mv s2, a0 //s2 guarda V
+  8c:	00050913          	mv	s2,a0
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:102
+	mv s3, a1 //s3 guarda W
+  90:	00058993          	mv	s3,a1
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:103
+	mv s4, a2 //s4 guarda n
+  94:	00060a13          	mv	s4,a2
+
+00000098 <for>:
+for():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:105
+for:
+	bge s1, s4, return_dotprod //i<n
+  98:	0344d263          	bge	s1,s4,bc <return_dotprod>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:106
+	lw a0, 0(s2) //1er argumento: V[i]
+  9c:	00092503          	lw	a0,0(s2)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:107
+	lw a1, 0(s3) //2º argumento: W[i]
+  a0:	0009a583          	lw	a1,0(s3)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:108
+	call mul //llamada a mul
+  a4:	03c000ef          	jal	ra,e0 <mul>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:109
+	mv s0, a0
+  a8:	00050413          	mv	s0,a0
+
+000000ac <sigue_bucle>:
+sigue_bucle():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:111
+sigue_bucle:
+	addi s1, s1, 1 //i++
+  ac:	00148493          	addi	s1,s1,1
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:112
+	addi s2, s2, 4 //X++
+  b0:	00490913          	addi	s2,s2,4
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:113
+	addi s3, s3, 4 //Y++
+  b4:	00498993          	addi	s3,s3,4
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:114
+	j for
+  b8:	fe1ff06f          	j	98 <for>
+
+000000bc <return_dotprod>:
+return_dotprod():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:117
+
+return_dotprod:
+	mv a0, s0 //coloco el valor de retorno
+  bc:	00040513          	mv	a0,s0
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:119
+	//Epílogo:
+	lw ra, 20(sp)
+  c0:	01412083          	lw	ra,20(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:120
+	lw s0, 16(sp)
+  c4:	01012403          	lw	s0,16(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:121
+	lw s1, 12(sp)
+  c8:	00c12483          	lw	s1,12(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:122
+	lw s2, 8(sp)
+  cc:	00812903          	lw	s2,8(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:123
+	lw s3, 4(sp)
+  d0:	00412983          	lw	s3,4(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:124
+	lw s4, 0(sp)
+  d4:	00012a03          	lw	s4,0(sp)
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:125
+	addi sp, sp, 24
+  d8:	01810113          	addi	sp,sp,24
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:126
+	ret
+  dc:	00008067          	ret
+
+000000e0 <mul>:
+mul():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:128
+mul:
+	li a0, 0 //a0 guarda res=0
+  e0:	00000513          	li	a0,0
+
+000000e4 <while_mul>:
+while_mul():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:130
+while_mul:
+	ble a1, zero, return_mul //comparo b>0
+  e4:	00b05863          	blez	a1,f4 <return_mul>
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:131
+	add a0, a0, a0 //res= res + a
+  e8:	00a50533          	add	a0,a0,a0
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:132
+	addi a1, a1, -1 //b--
+  ec:	fff58593          	addi	a1,a1,-1
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:134
+	//guardar b???
+	j while_mul
+  f0:	ff5ff06f          	j	e4 <while_mul>
+
+000000f4 <return_mul>:
+return_mul():
+D:\FC2practicasWS\pr3_a\Debug/../pr3_a.asm:136
+return_mul:
+	ret //devuelvo valor en a0
+  f4:	00008067          	ret

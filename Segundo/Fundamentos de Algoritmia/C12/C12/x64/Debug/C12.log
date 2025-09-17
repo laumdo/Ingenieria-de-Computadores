@@ -1,0 +1,3 @@
+﻿  PlantillaJuezCasosIlimitados.cpp
+D:\FAL NUEVO\C12\PlantillaJuezCasosIlimitados.cpp(42,26): warning C4267: 'argumento': conversión de 'size_t' a 'int'; posible pérdida de datos
+  C12.vcxproj -> D:\FAL NUEVO\C12\x64\Debug\C12.exe

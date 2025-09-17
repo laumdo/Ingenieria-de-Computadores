@@ -1,0 +1,4 @@
+﻿  PlantillaJuezCentinela.cpp
+D:\FAL NUEVO\C11\PlantillaJuezCentinela.cpp(62,41): warning C4267: 'argumento': conversión de 'size_t' a 'int'; posible pérdida de datos
+D:\FAL NUEVO\C11\PlantillaJuezCentinela.cpp(111,40): warning C4267: 'argumento': conversión de 'size_t' a 'int'; posible pérdida de datos
+  C11.vcxproj -> D:\FAL NUEVO\C11\x64\Debug\C11.exe

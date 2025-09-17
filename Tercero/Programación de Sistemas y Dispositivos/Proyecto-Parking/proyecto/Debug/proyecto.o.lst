@@ -1,0 +1,4681 @@
+   1              		.cpu arm7tdmi
+   2              		.fpu softvfp
+   3              		.eabi_attribute 20, 1
+   4              		.eabi_attribute 21, 1
+   5              		.eabi_attribute 23, 3
+   6              		.eabi_attribute 24, 1
+   7              		.eabi_attribute 25, 1
+   8              		.eabi_attribute 26, 1
+   9              		.eabi_attribute 30, 6
+  10              		.eabi_attribute 18, 4
+  11              		.file	"proyecto.c"
+  21              	.Ltext0:
+  22              		.file 1 "../proyecto.c"
+ 2146              		.align	2
+ 2147              		.global	main
+ 2149              	main:
+ 2150              	.LFB0:
+   1:../proyecto.c **** #include <s3c44b0x.h>
+   2:../proyecto.c **** #include <s3cev40.h>
+   3:../proyecto.c **** #include <common_types.h>
+   4:../proyecto.c **** #include <system.h>
+   5:../proyecto.c **** #include <leds.h>
+   6:../proyecto.c **** #include <segs.h>
+   7:../proyecto.c **** #include <uart.h>
+   8:../proyecto.c **** #include <rtc.h>
+   9:../proyecto.c **** #include <timers.h>
+  10:../proyecto.c **** #include <keypad.h>
+  11:../proyecto.c **** #include <lcd.h>
+  12:../proyecto.c **** #include <ts.h>
+  13:../proyecto.c **** 
+  14:../proyecto.c **** #include "kernelcoop.h"
+  15:../proyecto.c **** 
+  16:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  17:../proyecto.c **** // CONFIGURACION
+  18:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  19:../proyecto.c **** 
+  20:../proyecto.c **** #define MAXPLACES              (8)
+  21:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  22:../proyecto.c **** // Declaracion de tipos
+  23:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  24:../proyecto.c **** 
+  25:../proyecto.c **** typedef struct {
+  26:../proyecto.c **** 
+  27:../proyecto.c **** 	boolean occupied;
+  28:../proyecto.c **** 	rtc_time_t end_time;
+  29:../proyecto.c **** } plaza_t;
+  30:../proyecto.c **** 
+  31:../proyecto.c **** typedef struct {
+  32:../proyecto.c **** 	plaza_t plaza[MAXPLACES];
+  33:../proyecto.c **** 	uint16 recaudacion;
+  34:../proyecto.c **** 	boolean espanol;
+  35:../proyecto.c **** 	uint8 plazasLibres;
+  36:../proyecto.c **** } parking_t;
+  37:../proyecto.c **** 
+  38:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  39:../proyecto.c **** // Declaracion de funciones
+  40:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  41:../proyecto.c **** 
+  42:../proyecto.c **** void setup(void);
+  43:../proyecto.c **** void plotWelcomeScreen(void);
+  44:../proyecto.c **** const char* obtenerDiaSemana(uint8 weekday);
+  45:../proyecto.c **** void convertirFechaHora(rtc_time_t tiempoActual, char* buffer, char* diaSemana); // Función para co
+  46:../proyecto.c **** void plotSelectionScreen(void); //Pantalla de seleccion de Plaza
+  47:../proyecto.c **** uint8 plazaSeleccionada(void); //Nos devuelve la plaza elegida en funcion de la zona del ts presion
+  48:../proyecto.c **** void plotPaymentScreen(uint16 credit); //Pantalla de Pago
+  49:../proyecto.c **** void plotOccupiedScreen(uint16 credit); //Pantalla de Plaza Ocupada,permite liberar
+  50:../proyecto.c **** void printTicket(void); //Imprime por la uart el ticket de pago
+  51:../proyecto.c **** void tiempoOcupado(uint16 credit); //Calcula el tiempo que se desea reservar la plaza en funcion de
+  52:../proyecto.c **** void idiomaSeleccionado(void); //Devuelve que idioma hemos elegido en funcion de la zona del ts pre
+  53:../proyecto.c **** void idiomaScreen(void); //Pantalla de eleccion de idioma
+  54:../proyecto.c **** void liberar(void); //Si la plaza esta Ocupada, esta la opcion de liberar, que si no te has pasado 
+  55:../proyecto.c **** void multar(uint8 plaza); //Imprime el ticket de multa
+  56:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  57:../proyecto.c **** // Declaracion de tareas
+  58:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  59:../proyecto.c **** 
+  60:../proyecto.c **** void tsScanTask(void);
+  61:../proyecto.c **** void coinsAcceptorTask(void);
+  62:../proyecto.c **** void clockTask(void);
+  63:../proyecto.c **** void coinsMoverTask(void);
+  64:../proyecto.c **** void mainTask(void);
+  65:../proyecto.c **** void ticketPrinterTask(void);
+  66:../proyecto.c **** 
+  67:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  68:../proyecto.c **** // Declaracion de recursos
+  69:../proyecto.c **** /////////////////////////////////////////////////////////////////////////////
+  70:../proyecto.c **** 
+  71:../proyecto.c **** parking_t parking;
+  72:../proyecto.c **** uint8 plazaSelecc;
+  73:../proyecto.c **** 
+  74:../proyecto.c **** struct mbox1 { /* mailbox donde la coinsAcceptorTask indica a mainTask la moneda introducida */
+  75:../proyecto.c **** 	boolean flag;
+  76:../proyecto.c **** 	uint8 cents;
+  77:../proyecto.c **** } coinAcceptorMsg;
+  78:../proyecto.c **** 
+  79:../proyecto.c **** struct mbox2 { /* mailbox donde la tsScanTask indica a mainTask la posicion de la pantalla presiona
+  80:../proyecto.c **** 	boolean flag;
+  81:../proyecto.c **** 	uint16 x, y;
+  82:../proyecto.c **** } tsPressedMsg;
+  83:../proyecto.c **** 
+  84:../proyecto.c **** struct mbox3 { /* mailbox donde la mainTask indica a coinsMoverTask si debe aceptar o devolver las 
+  85:../proyecto.c **** 	boolean flag;
+  86:../proyecto.c **** 	boolean accept;
+  87:../proyecto.c **** } coinsMoverMsg;
+  88:../proyecto.c **** 
+  89:../proyecto.c **** boolean printTicketFlag; /* mailbox donde la mainTask indica a ticketPrintTask que imprima un ticke
+  90:../proyecto.c **** 
+  91:../proyecto.c **** /*******************************************************************/
+  92:../proyecto.c **** 
+  93:../proyecto.c **** void main(void) {
+ 2151              		.loc 1 93 0
+ 2152              		.cfi_startproc
+ 2153              		@ Function supports interworking.
+ 2154              		@ args = 0, pretend = 0, frame = 0
+ 2155              		@ frame_needed = 1, uses_anonymous_args = 0
+ 2156 0000 0DC0A0E1 		mov	ip, sp
+ 2157              	.LCFI0:
+ 2158              		.cfi_def_cfa_register 12
+ 2159 0004 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 2160 0008 04B04CE2 		sub	fp, ip, #4
+ 2161              		.cfi_offset 14, -8
+ 2162              		.cfi_offset 13, -12
+ 2163              		.cfi_offset 11, -16
+ 2164              	.LCFI1:
+ 2165              		.cfi_def_cfa 11, 4
+  94:../proyecto.c **** 
+  95:../proyecto.c **** 	sys_init();
+ 2166              		.loc 1 95 0
+ 2167 000c FEFFFFEB 		bl	sys_init
+  96:../proyecto.c **** 	leds_init();
+ 2168              		.loc 1 96 0
+ 2169 0010 FEFFFFEB 		bl	leds_init
+  97:../proyecto.c **** 	segs_init();
+ 2170              		.loc 1 97 0
+ 2171 0014 FEFFFFEB 		bl	segs_init
+  98:../proyecto.c **** 	uart0_init();
+ 2172              		.loc 1 98 0
+ 2173 0018 FEFFFFEB 		bl	uart0_init
+  99:../proyecto.c **** 	rtc_init();
+ 2174              		.loc 1 99 0
+ 2175 001c FEFFFFEB 		bl	rtc_init
+ 100:../proyecto.c **** 	timers_init();
+ 2176              		.loc 1 100 0
+ 2177 0020 FEFFFFEB 		bl	timers_init
+ 101:../proyecto.c **** 	keypad_init();
+ 2178              		.loc 1 101 0
+ 2179 0024 FEFFFFEB 		bl	keypad_init
+ 102:../proyecto.c **** 	lcd_init();
+ 2180              		.loc 1 102 0
+ 2181 0028 FEFFFFEB 		bl	lcd_init
+ 103:../proyecto.c **** 	ts_init();
+ 2182              		.loc 1 103 0
+ 2183 002c FEFFFFEB 		bl	ts_init
+ 104:../proyecto.c **** 
+ 105:../proyecto.c **** 	lcd_on();
+ 2184              		.loc 1 105 0
+ 2185 0030 FEFFFFEB 		bl	lcd_on
+ 106:../proyecto.c **** 	ts_on();
+ 2186              		.loc 1 106 0
+ 2187 0034 FEFFFFEB 		bl	ts_on
+ 107:../proyecto.c **** 
+ 108:../proyecto.c **** 	setup();
+ 2188              		.loc 1 108 0
+ 2189 0038 FEFFFFEB 		bl	setup
+ 109:../proyecto.c **** 
+ 110:../proyecto.c **** 	scheduler_init(); /* Inicializa el kernel */
+ 2190              		.loc 1 110 0
+ 2191 003c FEFFFFEB 		bl	scheduler_init
+ 111:../proyecto.c **** 
+ 112:../proyecto.c **** 	create_task(tsScanTask, 5); /* Crea las tareas de la aplicacion... */
+ 2192              		.loc 1 112 0
+ 2193 0040 58009FE5 		ldr	r0, .L3
+ 2194 0044 0510A0E3 		mov	r1, #5
+ 2195 0048 FEFFFFEB 		bl	create_task
+ 113:../proyecto.c **** 	create_task(coinsAcceptorTask, 5); /* ... el kernel asigna la prioridad segun orden de creacion */
+ 2196              		.loc 1 113 0
+ 2197 004c 50009FE5 		ldr	r0, .L3+4
+ 2198 0050 0510A0E3 		mov	r1, #5
+ 2199 0054 FEFFFFEB 		bl	create_task
+ 114:../proyecto.c **** 	create_task(mainTask, 10); /* ... las tareas mas frecuentes tienen mayor prioridad (criterio Rate-
+ 2200              		.loc 1 114 0
+ 2201 0058 48009FE5 		ldr	r0, .L3+8
+ 2202 005c 0A10A0E3 		mov	r1, #10
+ 2203 0060 FEFFFFEB 		bl	create_task
+ 115:../proyecto.c **** 	create_task(coinsMoverTask, 10);
+ 2204              		.loc 1 115 0
+ 2205 0064 40009FE5 		ldr	r0, .L3+12
+ 2206 0068 0A10A0E3 		mov	r1, #10
+ 2207 006c FEFFFFEB 		bl	create_task
+ 116:../proyecto.c **** 	create_task(clockTask, 10);
+ 2208              		.loc 1 116 0
+ 2209 0070 38009FE5 		ldr	r0, .L3+16
+ 2210 0074 0A10A0E3 		mov	r1, #10
+ 2211 0078 FEFFFFEB 		bl	create_task
+ 117:../proyecto.c **** 	create_task(ticketPrinterTask, 10);
+ 2212              		.loc 1 117 0
+ 2213 007c 30009FE5 		ldr	r0, .L3+20
+ 2214 0080 0A10A0E3 		mov	r1, #10
+ 2215 0084 FEFFFFEB 		bl	create_task
+ 118:../proyecto.c **** 
+ 119:../proyecto.c **** 	timer0_open_tick(scheduler, TICKS_PER_SEC); /* Instala scheduler como RTI del timer0  */
+ 2216              		.loc 1 119 0
+ 2217 0088 28009FE5 		ldr	r0, .L3+24
+ 2218 008c 6410A0E3 		mov	r1, #100
+ 2219 0090 FEFFFFEB 		bl	timer0_open_tick
+ 2220              	.L2:
+ 120:../proyecto.c **** 
+ 121:../proyecto.c **** 	while (1) {
+ 122:../proyecto.c **** 		sleep(); /* Entra en estado IDLE, sale por interrupcion */
+ 2221              		.loc 1 122 0 discriminator 1
+ 2222 0094 FEFFFFEB 		bl	sleep
+ 123:../proyecto.c **** 		dispacher(); /* Las tareas preparadas se ejecutan en esta hebra (background) en orden de priorida
+ 2223              		.loc 1 123 0 discriminator 1
+ 2224 0098 FEFFFFEB 		bl	dispacher
+ 124:../proyecto.c **** 	}
+ 2225              		.loc 1 124 0 discriminator 1
+ 2226 009c FCFFFFEA 		b	.L2
+ 2227              	.L4:
+ 2228              		.align	2
+ 2229              	.L3:
+ 2230 00a0 00000000 		.word	tsScanTask
+ 2231 00a4 00000000 		.word	coinsAcceptorTask
+ 2232 00a8 00000000 		.word	mainTask
+ 2233 00ac 00000000 		.word	coinsMoverTask
+ 2234 00b0 00000000 		.word	clockTask
+ 2235 00b4 00000000 		.word	ticketPrinterTask
+ 2236 00b8 00000000 		.word	scheduler
+ 2237              		.cfi_endproc
+ 2238              	.LFE0:
+ 2240              		.section	.rodata
+ 2241              		.align	2
+ 2242              	.LC0:
+ 2243 0000 53616C64 		.ascii	"Saldo Insuficiente\000"
+ 2243      6F20496E 
+ 2243      73756669 
+ 2243      6369656E 
+ 2243      746500
+ 2244 0013 00       		.align	2
+ 2245              	.LC1:
+ 2246 0014 496E7375 		.ascii	"Insuficient Balance\000"
+ 2246      66696369 
+ 2246      656E7420 
+ 2246      42616C61 
+ 2246      6E636500 
+ 2247              		.align	2
+ 2248              	.LC2:
+ 2249 0028 53616C64 		.ascii	"Saldo Maximo\000"
+ 2249      6F204D61 
+ 2249      78696D6F 
+ 2249      00
+ 2250 0035 000000   		.align	2
+ 2251              	.LC3:
+ 2252 0038 20205375 		.ascii	"  Superado \000"
+ 2252      70657261 
+ 2252      646F2000 
+ 2253              		.align	2
+ 2254              	.LC4:
+ 2255 0044 4D617869 		.ascii	"Maximum balance\000"
+ 2255      6D756D20 
+ 2255      62616C61 
+ 2255      6E636500 
+ 2256              		.align	2
+ 2257              	.LC5:
+ 2258 0054 45786365 		.ascii	"Exceeded\000"
+ 2258      65646564 
+ 2258      00
+ 2259              		.text
+ 2260              		.align	2
+ 2261              		.global	mainTask
+ 2263              	mainTask:
+ 2264              	.LFB1:
+ 125:../proyecto.c **** 
+ 126:../proyecto.c **** }
+ 127:../proyecto.c **** 
+ 128:../proyecto.c **** /*******************************************************************/
+ 129:../proyecto.c **** 
+ 130:../proyecto.c **** /*
+ 131:../proyecto.c ****  ** Tarea principal, se activa cada 100 ms muestreando los mensajes enviados de otras tareas y actu
+ 132:../proyecto.c ****  */
+ 133:../proyecto.c **** void mainTask(void) {
+ 2265              		.loc 1 133 0
+ 2266              		.cfi_startproc
+ 2267              		@ Function supports interworking.
+ 2268              		@ args = 0, pretend = 0, frame = 64
+ 2269              		@ frame_needed = 1, uses_anonymous_args = 0
+ 2270 00bc 0DC0A0E1 		mov	ip, sp
+ 2271              	.LCFI2:
+ 2272              		.cfi_def_cfa_register 12
+ 2273 00c0 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 2274 00c4 04B04CE2 		sub	fp, ip, #4
+ 2275              		.cfi_offset 14, -8
+ 2276              		.cfi_offset 13, -12
+ 2277              		.cfi_offset 11, -16
+ 2278              	.LCFI3:
+ 2279              		.cfi_def_cfa 11, 4
+ 2280 00c8 40D04DE2 		sub	sp, sp, #64
+ 134:../proyecto.c **** 	static boolean init = TRUE;
+ 135:../proyecto.c **** 	static enum {
+ 136:../proyecto.c **** 		demo_waiting, demo_acceptCoins, selection, payment, idioma
+ 137:../proyecto.c **** 	} state;
+ 138:../proyecto.c **** 	static uint16 credit;
+ 139:../proyecto.c **** 	static uint16 ticks;
+ 140:../proyecto.c **** 	char bufferFechaLiberacion[40];
+ 141:../proyecto.c **** 	char diaSemana[4];
+ 142:../proyecto.c **** 
+ 143:../proyecto.c **** 	if (init) {
+ 2281              		.loc 1 143 0
+ 2282 00cc 4C369FE5 		ldr	r3, .L38
+ 2283 00d0 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2284 00d4 000053E3 		cmp	r3, #0
+ 2285 00d8 0A00000A 		beq	.L6
+ 144:../proyecto.c **** 		init = FALSE;
+ 2286              		.loc 1 144 0
+ 2287 00dc 3C369FE5 		ldr	r3, .L38
+ 2288 00e0 0020A0E3 		mov	r2, #0
+ 2289 00e4 0020C3E5 		strb	r2, [r3, #0]
+ 145:../proyecto.c **** 		plotWelcomeScreen();
+ 2290              		.loc 1 145 0
+ 2291 00e8 FEFFFFEB 		bl	plotWelcomeScreen
+ 146:../proyecto.c **** 		credit = 0;
+ 2292              		.loc 1 146 0
+ 2293 00ec 30369FE5 		ldr	r3, .L38+4
+ 2294 00f0 0020A0E3 		mov	r2, #0
+ 2295 00f4 B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 147:../proyecto.c **** 		state = demo_waiting;
+ 2296              		.loc 1 147 0
+ 2297 00f8 28369FE5 		ldr	r3, .L38+8
+ 2298 00fc 0020A0E3 		mov	r2, #0
+ 2299 0100 0020C3E5 		strb	r2, [r3, #0]
+ 2300 0104 820100EA 		b	.L5
+ 2301              	.L6:
+ 148:../proyecto.c **** 
+ 149:../proyecto.c **** 	} else
+ 150:../proyecto.c **** 		switch (state) {
+ 2302              		.loc 1 150 0
+ 2303 0108 18369FE5 		ldr	r3, .L38+8
+ 2304 010c 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2305 0110 040053E3 		cmp	r3, #4
+ 2306 0114 03F19F97 		ldrls	pc, [pc, r3, asl #2]
+ 2307 0118 7D0100EA 		b	.L5
+ 2308              	.L13:
+ 2309 011c 30010000 		.word	.L8
+ 2310 0120 90030000 		.word	.L9
+ 2311 0124 24020000 		.word	.L10
+ 2312 0128 B0020000 		.word	.L11
+ 2313 012c A4010000 		.word	.L12
+ 2314              	.L8:
+ 151:../proyecto.c **** 		case demo_waiting: /* Estado en donde rechaza monedas y espera la pulsacion de la pantalla */
+ 152:../proyecto.c **** 
+ 153:../proyecto.c **** 			if (tsPressedMsg.flag) /* Chequea si se ha pulsado la pantalla (mensaje recibido de la tarea tsP
+ 2315              		.loc 1 153 0
+ 2316 0130 F4359FE5 		ldr	r3, .L38+12
+ 2317 0134 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2318 0138 000053E3 		cmp	r3, #0
+ 2319 013c 0A00000A 		beq	.L14
+ 154:../proyecto.c **** 			{
+ 155:../proyecto.c **** 				tsPressedMsg.flag = FALSE; /* Marca el mensaje como leido */
+ 2320              		.loc 1 155 0
+ 2321 0140 E4359FE5 		ldr	r3, .L38+12
+ 2322 0144 0020A0E3 		mov	r2, #0
+ 2323 0148 0020C3E5 		strb	r2, [r3, #0]
+ 156:../proyecto.c **** 				lcd_clear(); /* Borra pantalla */
+ 2324              		.loc 1 156 0
+ 2325 014c FEFFFFEB 		bl	lcd_clear
+ 157:../proyecto.c **** 				idiomaScreen();
+ 2326              		.loc 1 157 0
+ 2327 0150 FEFFFFEB 		bl	idiomaScreen
+ 158:../proyecto.c **** 				state = idioma;
+ 2328              		.loc 1 158 0
+ 2329 0154 CC359FE5 		ldr	r3, .L38+8
+ 2330 0158 0420A0E3 		mov	r2, #4
+ 2331 015c 0020C3E5 		strb	r2, [r3, #0]
+ 159:../proyecto.c **** 				ticks = 500; /* ... en el que debera permanecer un maximo de 500 ticks sin no hay actividad */
+ 2332              		.loc 1 159 0
+ 2333 0160 C8359FE5 		ldr	r3, .L38+16
+ 2334 0164 7D2FA0E3 		mov	r2, #500
+ 2335 0168 B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 2336              	.L14:
+ 160:../proyecto.c **** 			}
+ 161:../proyecto.c **** 			if (coinAcceptorMsg.flag) /* Chequea si se ha introducido una moneda (mensaje recibido de la tar
+ 2337              		.loc 1 161 0
+ 2338 016c C0359FE5 		ldr	r3, .L38+20
+ 2339 0170 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2340 0174 000053E3 		cmp	r3, #0
+ 2341 0178 5C01000A 		beq	.L33
+ 162:../proyecto.c **** 			{
+ 163:../proyecto.c **** 				coinAcceptorMsg.flag = FALSE; /* Marca el mensaje como leido */
+ 2342              		.loc 1 163 0
+ 2343 017c B0359FE5 		ldr	r3, .L38+20
+ 2344 0180 0020A0E3 		mov	r2, #0
+ 2345 0184 0020C3E5 		strb	r2, [r3, #0]
+ 164:../proyecto.c **** 				coinsMoverMsg.accept = FALSE; /* Envia un mensaje para que la moneda se devuelva */
+ 2346              		.loc 1 164 0
+ 2347 0188 A8359FE5 		ldr	r3, .L38+24
+ 2348 018c 0020A0E3 		mov	r2, #0
+ 2349 0190 0120C3E5 		strb	r2, [r3, #1]
+ 165:../proyecto.c **** 				coinsMoverMsg.flag = TRUE;
+ 2350              		.loc 1 165 0
+ 2351 0194 9C359FE5 		ldr	r3, .L38+24
+ 2352 0198 0120A0E3 		mov	r2, #1
+ 2353 019c 0020C3E5 		strb	r2, [r3, #0]
+ 166:../proyecto.c **** 			}
+ 167:../proyecto.c **** 			break;
+ 2354              		.loc 1 167 0
+ 2355 01a0 5B0100EA 		b	.L5
+ 2356              	.L12:
+ 168:../proyecto.c **** 		case idioma:
+ 169:../proyecto.c **** 
+ 170:../proyecto.c **** 			if (!(--ticks)) //Decrementa ticks y chequea si ha permanecido en este estado el tiempo maximo
+ 2357              		.loc 1 170 0
+ 2358 01a4 84359FE5 		ldr	r3, .L38+16
+ 2359 01a8 B030D3E1 		ldrh	r3, [r3, #0]
+ 2360 01ac 013043E2 		sub	r3, r3, #1
+ 2361 01b0 0338A0E1 		mov	r3, r3, asl #16
+ 2362 01b4 2328A0E1 		mov	r2, r3, lsr #16
+ 2363 01b8 70359FE5 		ldr	r3, .L38+16
+ 2364 01bc B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 2365 01c0 68359FE5 		ldr	r3, .L38+16
+ 2366 01c4 B030D3E1 		ldrh	r3, [r3, #0]
+ 2367 01c8 000053E3 		cmp	r3, #0
+ 2368 01cc 0300001A 		bne	.L16
+ 171:../proyecto.c **** 			{
+ 172:../proyecto.c **** 				plotWelcomeScreen(); // Visualiza pantalla inicial
+ 2369              		.loc 1 172 0
+ 2370 01d0 FEFFFFEB 		bl	plotWelcomeScreen
+ 173:../proyecto.c **** 				state = demo_waiting; // Salta al estado demo_waiting
+ 2371              		.loc 1 173 0
+ 2372 01d4 4C359FE5 		ldr	r3, .L38+8
+ 2373 01d8 0020A0E3 		mov	r2, #0
+ 2374 01dc 0020C3E5 		strb	r2, [r3, #0]
+ 2375              	.L16:
+ 174:../proyecto.c **** 			}
+ 175:../proyecto.c **** 			if (tsPressedMsg.flag) {
+ 2376              		.loc 1 175 0
+ 2377 01e0 44359FE5 		ldr	r3, .L38+12
+ 2378 01e4 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2379 01e8 000053E3 		cmp	r3, #0
+ 2380 01ec 4101000A 		beq	.L34
+ 176:../proyecto.c **** 				tsPressedMsg.flag = FALSE; /* Marca el mensaje como leído */
+ 2381              		.loc 1 176 0
+ 2382 01f0 34359FE5 		ldr	r3, .L38+12
+ 2383 01f4 0020A0E3 		mov	r2, #0
+ 2384 01f8 0020C3E5 		strb	r2, [r3, #0]
+ 177:../proyecto.c **** 				lcd_clear();
+ 2385              		.loc 1 177 0
+ 2386 01fc FEFFFFEB 		bl	lcd_clear
+ 178:../proyecto.c **** 				idiomaSeleccionado();
+ 2387              		.loc 1 178 0
+ 2388 0200 FEFFFFEB 		bl	idiomaSeleccionado
+ 179:../proyecto.c **** 				plotSelectionScreen();
+ 2389              		.loc 1 179 0
+ 2390 0204 FEFFFFEB 		bl	plotSelectionScreen
+ 180:../proyecto.c **** 				state = selection;
+ 2391              		.loc 1 180 0
+ 2392 0208 18359FE5 		ldr	r3, .L38+8
+ 2393 020c 0220A0E3 		mov	r2, #2
+ 2394 0210 0020C3E5 		strb	r2, [r3, #0]
+ 181:../proyecto.c **** 				ticks = 500; /* ... en el que debera permanecer un maximo de 500 ticks sin no hay actividad */
+ 2395              		.loc 1 181 0
+ 2396 0214 14359FE5 		ldr	r3, .L38+16
+ 2397 0218 7D2FA0E3 		mov	r2, #500
+ 2398 021c B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 182:../proyecto.c **** 			}
+ 183:../proyecto.c **** 			break;
+ 2399              		.loc 1 183 0
+ 2400 0220 3B0100EA 		b	.L5
+ 2401              	.L10:
+ 184:../proyecto.c **** 
+ 185:../proyecto.c **** 		case selection:
+ 186:../proyecto.c **** 
+ 187:../proyecto.c **** 			if (!(--ticks)) //Decrementa ticks y chequea si ha permanecido en este estado el tiempo maximo
+ 2402              		.loc 1 187 0
+ 2403 0224 04359FE5 		ldr	r3, .L38+16
+ 2404 0228 B030D3E1 		ldrh	r3, [r3, #0]
+ 2405 022c 013043E2 		sub	r3, r3, #1
+ 2406 0230 0338A0E1 		mov	r3, r3, asl #16
+ 2407 0234 2328A0E1 		mov	r2, r3, lsr #16
+ 2408 0238 F0349FE5 		ldr	r3, .L38+16
+ 2409 023c B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 2410 0240 E8349FE5 		ldr	r3, .L38+16
+ 2411 0244 B030D3E1 		ldrh	r3, [r3, #0]
+ 2412 0248 000053E3 		cmp	r3, #0
+ 2413 024c 0300001A 		bne	.L18
+ 188:../proyecto.c **** 			{
+ 189:../proyecto.c **** 				plotWelcomeScreen(); // Visualiza pantalla inicial
+ 2414              		.loc 1 189 0
+ 2415 0250 FEFFFFEB 		bl	plotWelcomeScreen
+ 190:../proyecto.c **** 				state = demo_waiting; // Salta al estado demo_waiting
+ 2416              		.loc 1 190 0
+ 2417 0254 CC349FE5 		ldr	r3, .L38+8
+ 2418 0258 0020A0E3 		mov	r2, #0
+ 2419 025c 0020C3E5 		strb	r2, [r3, #0]
+ 2420              	.L18:
+ 191:../proyecto.c **** 			}
+ 192:../proyecto.c **** 			if (tsPressedMsg.flag) {
+ 2421              		.loc 1 192 0
+ 2422 0260 C4349FE5 		ldr	r3, .L38+12
+ 2423 0264 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2424 0268 000053E3 		cmp	r3, #0
+ 2425 026c 2301000A 		beq	.L35
+ 193:../proyecto.c **** 				tsPressedMsg.flag = FALSE; /* Marca el mensaje como leído */
+ 2426              		.loc 1 193 0
+ 2427 0270 B4349FE5 		ldr	r3, .L38+12
+ 2428 0274 0020A0E3 		mov	r2, #0
+ 2429 0278 0020C3E5 		strb	r2, [r3, #0]
+ 194:../proyecto.c **** 				plazaSelecc = plazaSeleccionada();
+ 2430              		.loc 1 194 0
+ 2431 027c FEFFFFEB 		bl	plazaSeleccionada
+ 2432 0280 0030A0E1 		mov	r3, r0
+ 2433 0284 0320A0E1 		mov	r2, r3
+ 2434 0288 AC349FE5 		ldr	r3, .L38+28
+ 2435 028c 0020C3E5 		strb	r2, [r3, #0]
+ 195:../proyecto.c **** 				lcd_clear();
+ 2436              		.loc 1 195 0
+ 2437 0290 FEFFFFEB 		bl	lcd_clear
+ 196:../proyecto.c **** 				state = payment; /* Cambia al siguiente estado */
+ 2438              		.loc 1 196 0
+ 2439 0294 8C349FE5 		ldr	r3, .L38+8
+ 2440 0298 0320A0E3 		mov	r2, #3
+ 2441 029c 0020C3E5 		strb	r2, [r3, #0]
+ 197:../proyecto.c **** 				ticks = 500; /* Inicializa el temporizador */
+ 2442              		.loc 1 197 0
+ 2443 02a0 88349FE5 		ldr	r3, .L38+16
+ 2444 02a4 7D2FA0E3 		mov	r2, #500
+ 2445 02a8 B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 198:../proyecto.c **** 			}
+ 199:../proyecto.c **** 			break;
+ 2446              		.loc 1 199 0
+ 2447 02ac 180100EA 		b	.L5
+ 2448              	.L11:
+ 200:../proyecto.c **** 		case payment:
+ 201:../proyecto.c **** 
+ 202:../proyecto.c **** 			if (!(--ticks)) //Decrementa ticks y chequea si ha permanecido en este estado el tiempo maximo
+ 2449              		.loc 1 202 0
+ 2450 02b0 78349FE5 		ldr	r3, .L38+16
+ 2451 02b4 B030D3E1 		ldrh	r3, [r3, #0]
+ 2452 02b8 013043E2 		sub	r3, r3, #1
+ 2453 02bc 0338A0E1 		mov	r3, r3, asl #16
+ 2454 02c0 2328A0E1 		mov	r2, r3, lsr #16
+ 2455 02c4 64349FE5 		ldr	r3, .L38+16
+ 2456 02c8 B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 2457 02cc 5C349FE5 		ldr	r3, .L38+16
+ 2458 02d0 B030D3E1 		ldrh	r3, [r3, #0]
+ 2459 02d4 000053E3 		cmp	r3, #0
+ 2460 02d8 0300001A 		bne	.L20
+ 203:../proyecto.c **** 			{
+ 204:../proyecto.c **** 				plotWelcomeScreen(); // Visualiza pantalla inicial
+ 2461              		.loc 1 204 0
+ 2462 02dc FEFFFFEB 		bl	plotWelcomeScreen
+ 205:../proyecto.c **** 				state = demo_waiting; // Salta al estado demo_waiting
+ 2463              		.loc 1 205 0
+ 2464 02e0 40349FE5 		ldr	r3, .L38+8
+ 2465 02e4 0020A0E3 		mov	r2, #0
+ 2466 02e8 0020C3E5 		strb	r2, [r3, #0]
+ 2467              	.L20:
+ 206:../proyecto.c **** 			}
+ 207:../proyecto.c **** 			if (parking.plaza[plazaSelecc - 1].occupied) {
+ 2468              		.loc 1 207 0
+ 2469 02ec 48349FE5 		ldr	r3, .L38+28
+ 2470 02f0 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2471 02f4 012043E2 		sub	r2, r3, #1
+ 2472 02f8 40349FE5 		ldr	r3, .L38+32
+ 2473 02fc 8231D3E7 		ldrb	r3, [r3, r2, asl #3]	@ zero_extendqisi2
+ 2474 0300 000053E3 		cmp	r3, #0
+ 2475 0304 1600000A 		beq	.L21
+ 208:../proyecto.c **** 				plotOccupiedScreen(credit);
+ 2476              		.loc 1 208 0
+ 2477 0308 14349FE5 		ldr	r3, .L38+4
+ 2478 030c B030D3E1 		ldrh	r3, [r3, #0]
+ 2479 0310 0300A0E1 		mov	r0, r3
+ 2480 0314 FEFFFFEB 		bl	plotOccupiedScreen
+ 209:../proyecto.c **** 				if (tsPressedMsg.flag) /* Chequea si se ha pulsado la pantalla (mensaje recibido de la tarea ts
+ 2481              		.loc 1 209 0
+ 2482 0318 0C349FE5 		ldr	r3, .L38+12
+ 2483 031c 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2484 0320 000053E3 		cmp	r3, #0
+ 2485 0324 F700000A 		beq	.L36
+ 210:../proyecto.c **** 				{
+ 211:../proyecto.c **** 					tsPressedMsg.flag = FALSE;
+ 2486              		.loc 1 211 0
+ 2487 0328 FC339FE5 		ldr	r3, .L38+12
+ 2488 032c 0020A0E3 		mov	r2, #0
+ 2489 0330 0020C3E5 		strb	r2, [r3, #0]
+ 212:../proyecto.c **** 					liberar();
+ 2490              		.loc 1 212 0
+ 2491 0334 FEFFFFEB 		bl	liberar
+ 213:../proyecto.c **** 					sw_delay_s(5);
+ 2492              		.loc 1 213 0
+ 2493 0338 0500A0E3 		mov	r0, #5
+ 2494 033c FEFFFFEB 		bl	sw_delay_s
+ 214:../proyecto.c **** 					lcd_clear();
+ 2495              		.loc 1 214 0
+ 2496 0340 FEFFFFEB 		bl	lcd_clear
+ 215:../proyecto.c **** 					plotSelectionScreen();
+ 2497              		.loc 1 215 0
+ 2498 0344 FEFFFFEB 		bl	plotSelectionScreen
+ 216:../proyecto.c **** 					state = selection;
+ 2499              		.loc 1 216 0
+ 2500 0348 D8339FE5 		ldr	r3, .L38+8
+ 2501 034c 0220A0E3 		mov	r2, #2
+ 2502 0350 0020C3E5 		strb	r2, [r3, #0]
+ 217:../proyecto.c **** 					ticks = 500;
+ 2503              		.loc 1 217 0
+ 2504 0354 D4339FE5 		ldr	r3, .L38+16
+ 2505 0358 7D2FA0E3 		mov	r2, #500
+ 2506 035c B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 218:../proyecto.c **** 				}
+ 219:../proyecto.c **** 			} else {
+ 220:../proyecto.c **** 				plotPaymentScreen(credit);
+ 221:../proyecto.c **** 				state = demo_acceptCoins;
+ 222:../proyecto.c **** 				ticks = 500;
+ 223:../proyecto.c **** 			}
+ 224:../proyecto.c **** 			break;
+ 2507              		.loc 1 224 0
+ 2508 0360 EB0000EA 		b	.L5
+ 2509              	.L21:
+ 220:../proyecto.c **** 				plotPaymentScreen(credit);
+ 2510              		.loc 1 220 0
+ 2511 0364 B8339FE5 		ldr	r3, .L38+4
+ 2512 0368 B030D3E1 		ldrh	r3, [r3, #0]
+ 2513 036c 0300A0E1 		mov	r0, r3
+ 2514 0370 FEFFFFEB 		bl	plotPaymentScreen
+ 221:../proyecto.c **** 				state = demo_acceptCoins;
+ 2515              		.loc 1 221 0
+ 2516 0374 AC339FE5 		ldr	r3, .L38+8
+ 2517 0378 0120A0E3 		mov	r2, #1
+ 2518 037c 0020C3E5 		strb	r2, [r3, #0]
+ 222:../proyecto.c **** 				ticks = 500;
+ 2519              		.loc 1 222 0
+ 2520 0380 A8339FE5 		ldr	r3, .L38+16
+ 2521 0384 7D2FA0E3 		mov	r2, #500
+ 2522 0388 B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 2523              		.loc 1 224 0
+ 2524 038c E00000EA 		b	.L5
+ 2525              	.L9:
+ 225:../proyecto.c **** 		case demo_acceptCoins: /* Estado en deonde acepta monedas y espera la pulsacion de la pantalla du
+ 226:../proyecto.c **** 			if (!(--ticks)) /* Decrementa ticks y chequea si ha permanecido en este estado el tiempo maximo 
+ 2526              		.loc 1 226 0
+ 2527 0390 98339FE5 		ldr	r3, .L38+16
+ 2528 0394 B030D3E1 		ldrh	r3, [r3, #0]
+ 2529 0398 013043E2 		sub	r3, r3, #1
+ 2530 039c 0338A0E1 		mov	r3, r3, asl #16
+ 2531 03a0 2328A0E1 		mov	r2, r3, lsr #16
+ 2532 03a4 84339FE5 		ldr	r3, .L38+16
+ 2533 03a8 B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 2534 03ac 7C339FE5 		ldr	r3, .L38+16
+ 2535 03b0 B030D3E1 		ldrh	r3, [r3, #0]
+ 2536 03b4 000053E3 		cmp	r3, #0
+ 2537 03b8 0300001A 		bne	.L23
+ 227:../proyecto.c **** 			{
+ 228:../proyecto.c **** 				plotWelcomeScreen(); /* Visualiza pantalla inicial */
+ 2538              		.loc 1 228 0
+ 2539 03bc FEFFFFEB 		bl	plotWelcomeScreen
+ 229:../proyecto.c **** 				state = demo_waiting; /* Salta al estado demo_waiting */
+ 2540              		.loc 1 229 0
+ 2541 03c0 60339FE5 		ldr	r3, .L38+8
+ 2542 03c4 0020A0E3 		mov	r2, #0
+ 2543 03c8 0020C3E5 		strb	r2, [r3, #0]
+ 2544              	.L23:
+ 230:../proyecto.c **** 			}
+ 231:../proyecto.c **** 			if (tsPressedMsg.flag) /* Chequea si se ha pulsado la pantalla (mensaje recibido de la tarea tsP
+ 2545              		.loc 1 231 0
+ 2546 03cc 58339FE5 		ldr	r3, .L38+12
+ 2547 03d0 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2548 03d4 000053E3 		cmp	r3, #0
+ 2549 03d8 8C00000A 		beq	.L24
+ 2550              	.LBB2:
+ 232:../proyecto.c **** 			{
+ 233:../proyecto.c **** 				tsPressedMsg.flag = FALSE; /* Marca el mensaje como leido*/
+ 2551              		.loc 1 233 0
+ 2552 03dc 48339FE5 		ldr	r3, .L38+12
+ 2553 03e0 0020A0E3 		mov	r2, #0
+ 2554 03e4 0020C3E5 		strb	r2, [r3, #0]
+ 234:../proyecto.c **** 
+ 235:../proyecto.c **** 				rtc_time_t tiempoActual;
+ 236:../proyecto.c **** 				rtc_gettime(&tiempoActual);
+ 2555              		.loc 1 236 0
+ 2556 03e8 40304BE2 		sub	r3, fp, #64
+ 2557 03ec 0300A0E1 		mov	r0, r3
+ 2558 03f0 FEFFFFEB 		bl	rtc_gettime
+ 237:../proyecto.c **** 
+ 238:../proyecto.c **** 				if (credit < 20) {
+ 2559              		.loc 1 238 0
+ 2560 03f4 28339FE5 		ldr	r3, .L38+4
+ 2561 03f8 B030D3E1 		ldrh	r3, [r3, #0]
+ 2562 03fc 130053E3 		cmp	r3, #19
+ 2563 0400 2700008A 		bhi	.L25
+ 239:../proyecto.c **** 					coinsMoverMsg.accept = FALSE; /* Envia un mensaje para que las monedas se acepten */
+ 2564              		.loc 1 239 0
+ 2565 0404 2C339FE5 		ldr	r3, .L38+24
+ 2566 0408 0020A0E3 		mov	r2, #0
+ 2567 040c 0120C3E5 		strb	r2, [r3, #1]
+ 240:../proyecto.c **** 					coinsMoverMsg.flag = TRUE;
+ 2568              		.loc 1 240 0
+ 2569 0410 20339FE5 		ldr	r3, .L38+24
+ 2570 0414 0120A0E3 		mov	r2, #1
+ 2571 0418 0020C3E5 		strb	r2, [r3, #0]
+ 241:../proyecto.c **** 					parking.plaza[plazaSelecc - 1].end_time = tiempoActual;
+ 2572              		.loc 1 241 0
+ 2573 041c 18339FE5 		ldr	r3, .L38+28
+ 2574 0420 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2575 0424 012043E2 		sub	r2, r3, #1
+ 2576 0428 10139FE5 		ldr	r1, .L38+32
+ 2577 042c 0130A0E3 		mov	r3, #1
+ 2578 0430 8221A0E1 		mov	r2, r2, asl #3
+ 2579 0434 022081E0 		add	r2, r1, r2
+ 2580 0438 033082E0 		add	r3, r2, r3
+ 2581 043c 0310A0E1 		mov	r1, r3
+ 2582 0440 40204BE2 		sub	r2, fp, #64
+ 2583 0444 0730A0E3 		mov	r3, #7
+ 2584 0448 0100A0E1 		mov	r0, r1
+ 2585 044c 0210A0E1 		mov	r1, r2
+ 2586 0450 0320A0E1 		mov	r2, r3
+ 2587 0454 FEFFFFEB 		bl	memcpy
+ 242:../proyecto.c **** 					lcd_clear();
+ 2588              		.loc 1 242 0
+ 2589 0458 FEFFFFEB 		bl	lcd_clear
+ 243:../proyecto.c **** 					if (parking.espanol) {
+ 2590              		.loc 1 243 0
+ 2591 045c DC329FE5 		ldr	r3, .L38+32
+ 2592 0460 4230D3E5 		ldrb	r3, [r3, #66]	@ zero_extendqisi2
+ 2593 0464 000053E3 		cmp	r3, #0
+ 2594 0468 0500000A 		beq	.L26
+ 244:../proyecto.c **** 						lcd_puts_x2(20, 100, BLACK, "Saldo Insuficiente");
+ 2595              		.loc 1 244 0
+ 2596 046c 1400A0E3 		mov	r0, #20
+ 2597 0470 6410A0E3 		mov	r1, #100
+ 2598 0474 0F20A0E3 		mov	r2, #15
+ 2599 0478 C4329FE5 		ldr	r3, .L38+36
+ 2600 047c FEFFFFEB 		bl	lcd_puts_x2
+ 2601 0480 040000EA 		b	.L27
+ 2602              	.L26:
+ 245:../proyecto.c **** 					} else {
+ 246:../proyecto.c **** 						lcd_puts_x2(20, 100, BLACK, "Insuficient Balance");
+ 2603              		.loc 1 246 0
+ 2604 0484 1400A0E3 		mov	r0, #20
+ 2605 0488 6410A0E3 		mov	r1, #100
+ 2606 048c 0F20A0E3 		mov	r2, #15
+ 2607 0490 B0329FE5 		ldr	r3, .L38+40
+ 2608 0494 FEFFFFEB 		bl	lcd_puts_x2
+ 2609              	.L27:
+ 247:../proyecto.c **** 					}
+ 248:../proyecto.c **** 					sw_delay_s(2);
+ 2610              		.loc 1 248 0
+ 2611 0498 0200A0E3 		mov	r0, #2
+ 2612 049c FEFFFFEB 		bl	sw_delay_s
+ 2613 04a0 530000EA 		b	.L28
+ 2614              	.L25:
+ 249:../proyecto.c **** 
+ 250:../proyecto.c **** 				} else if (credit > 240) {
+ 2615              		.loc 1 250 0
+ 2616 04a4 78329FE5 		ldr	r3, .L38+4
+ 2617 04a8 B030D3E1 		ldrh	r3, [r3, #0]
+ 2618 04ac F00053E3 		cmp	r3, #240
+ 2619 04b0 3100009A 		bls	.L29
+ 251:../proyecto.c **** 					coinsMoverMsg.accept = FALSE; /* Envia un mensaje para que las monedas se acepten */
+ 2620              		.loc 1 251 0
+ 2621 04b4 7C329FE5 		ldr	r3, .L38+24
+ 2622 04b8 0020A0E3 		mov	r2, #0
+ 2623 04bc 0120C3E5 		strb	r2, [r3, #1]
+ 252:../proyecto.c **** 					coinsMoverMsg.flag = TRUE;
+ 2624              		.loc 1 252 0
+ 2625 04c0 70329FE5 		ldr	r3, .L38+24
+ 2626 04c4 0120A0E3 		mov	r2, #1
+ 2627 04c8 0020C3E5 		strb	r2, [r3, #0]
+ 253:../proyecto.c **** 					parking.plaza[plazaSelecc - 1].end_time = tiempoActual;
+ 2628              		.loc 1 253 0
+ 2629 04cc 68329FE5 		ldr	r3, .L38+28
+ 2630 04d0 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2631 04d4 012043E2 		sub	r2, r3, #1
+ 2632 04d8 60129FE5 		ldr	r1, .L38+32
+ 2633 04dc 0130A0E3 		mov	r3, #1
+ 2634 04e0 8221A0E1 		mov	r2, r2, asl #3
+ 2635 04e4 022081E0 		add	r2, r1, r2
+ 2636 04e8 033082E0 		add	r3, r2, r3
+ 2637 04ec 0310A0E1 		mov	r1, r3
+ 2638 04f0 40204BE2 		sub	r2, fp, #64
+ 2639 04f4 0730A0E3 		mov	r3, #7
+ 2640 04f8 0100A0E1 		mov	r0, r1
+ 2641 04fc 0210A0E1 		mov	r1, r2
+ 2642 0500 0320A0E1 		mov	r2, r3
+ 2643 0504 FEFFFFEB 		bl	memcpy
+ 254:../proyecto.c **** 					lcd_clear();
+ 2644              		.loc 1 254 0
+ 2645 0508 FEFFFFEB 		bl	lcd_clear
+ 255:../proyecto.c **** 					if (parking.espanol) {
+ 2646              		.loc 1 255 0
+ 2647 050c 2C329FE5 		ldr	r3, .L38+32
+ 2648 0510 4230D3E5 		ldrb	r3, [r3, #66]	@ zero_extendqisi2
+ 2649 0514 000053E3 		cmp	r3, #0
+ 2650 0518 0A00000A 		beq	.L30
+ 256:../proyecto.c **** 						lcd_puts_x2(50, 100, BLACK, "Saldo Maximo");
+ 2651              		.loc 1 256 0
+ 2652 051c 3200A0E3 		mov	r0, #50
+ 2653 0520 6410A0E3 		mov	r1, #100
+ 2654 0524 0F20A0E3 		mov	r2, #15
+ 2655 0528 1C329FE5 		ldr	r3, .L38+44
+ 2656 052c FEFFFFEB 		bl	lcd_puts_x2
+ 257:../proyecto.c **** 						lcd_puts_x2(50, 150, BLACK, "  Superado ");
+ 2657              		.loc 1 257 0
+ 2658 0530 3200A0E3 		mov	r0, #50
+ 2659 0534 9610A0E3 		mov	r1, #150
+ 2660 0538 0F20A0E3 		mov	r2, #15
+ 2661 053c 0C329FE5 		ldr	r3, .L38+48
+ 2662 0540 FEFFFFEB 		bl	lcd_puts_x2
+ 2663 0544 090000EA 		b	.L31
+ 2664              	.L30:
+ 258:../proyecto.c **** 					} else {
+ 259:../proyecto.c **** 						lcd_puts_x2(50, 100, BLACK, "Maximum balance");
+ 2665              		.loc 1 259 0
+ 2666 0548 3200A0E3 		mov	r0, #50
+ 2667 054c 6410A0E3 		mov	r1, #100
+ 2668 0550 0F20A0E3 		mov	r2, #15
+ 2669 0554 F8319FE5 		ldr	r3, .L38+52
+ 2670 0558 FEFFFFEB 		bl	lcd_puts_x2
+ 260:../proyecto.c **** 						lcd_puts_x2(50, 150, BLACK, "Exceeded");
+ 2671              		.loc 1 260 0
+ 2672 055c 3200A0E3 		mov	r0, #50
+ 2673 0560 9610A0E3 		mov	r1, #150
+ 2674 0564 0F20A0E3 		mov	r2, #15
+ 2675 0568 E8319FE5 		ldr	r3, .L38+56
+ 2676 056c FEFFFFEB 		bl	lcd_puts_x2
+ 2677              	.L31:
+ 261:../proyecto.c **** 					}
+ 262:../proyecto.c **** 					sw_delay_s(5);
+ 2678              		.loc 1 262 0
+ 2679 0570 0500A0E3 		mov	r0, #5
+ 2680 0574 FEFFFFEB 		bl	sw_delay_s
+ 2681 0578 1D0000EA 		b	.L28
+ 2682              	.L29:
+ 263:../proyecto.c **** 				} else {
+ 264:../proyecto.c **** 					coinsMoverMsg.accept = TRUE; /* Envia un mensaje para que las monedas se acepten */
+ 2683              		.loc 1 264 0
+ 2684 057c B4319FE5 		ldr	r3, .L38+24
+ 2685 0580 0120A0E3 		mov	r2, #1
+ 2686 0584 0120C3E5 		strb	r2, [r3, #1]
+ 265:../proyecto.c **** 					coinsMoverMsg.flag = TRUE;
+ 2687              		.loc 1 265 0
+ 2688 0588 A8319FE5 		ldr	r3, .L38+24
+ 2689 058c 0120A0E3 		mov	r2, #1
+ 2690 0590 0020C3E5 		strb	r2, [r3, #0]
+ 266:../proyecto.c **** 					parking.recaudacion += credit;
+ 2691              		.loc 1 266 0
+ 2692 0594 A4319FE5 		ldr	r3, .L38+32
+ 2693 0598 B024D3E1 		ldrh	r2, [r3, #64]
+ 2694 059c 80319FE5 		ldr	r3, .L38+4
+ 2695 05a0 B030D3E1 		ldrh	r3, [r3, #0]
+ 2696 05a4 033082E0 		add	r3, r2, r3
+ 2697 05a8 0338A0E1 		mov	r3, r3, asl #16
+ 2698 05ac 2328A0E1 		mov	r2, r3, lsr #16
+ 2699 05b0 88319FE5 		ldr	r3, .L38+32
+ 2700 05b4 B024C3E1 		strh	r2, [r3, #64]	@ movhi
+ 267:../proyecto.c **** 					parking.plaza[plazaSelecc - 1].occupied = TRUE;
+ 2701              		.loc 1 267 0
+ 2702 05b8 7C319FE5 		ldr	r3, .L38+28
+ 2703 05bc 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2704 05c0 012043E2 		sub	r2, r3, #1
+ 2705 05c4 74319FE5 		ldr	r3, .L38+32
+ 2706 05c8 0110A0E3 		mov	r1, #1
+ 2707 05cc 8211C3E7 		strb	r1, [r3, r2, asl #3]
+ 268:../proyecto.c **** 					printTicketFlag = TRUE;
+ 2708              		.loc 1 268 0
+ 2709 05d0 84319FE5 		ldr	r3, .L38+60
+ 2710 05d4 0120A0E3 		mov	r2, #1
+ 2711 05d8 0020C3E5 		strb	r2, [r3, #0]
+ 269:../proyecto.c **** 					parking.plazasLibres--;
+ 2712              		.loc 1 269 0
+ 2713 05dc 5C319FE5 		ldr	r3, .L38+32
+ 2714 05e0 4330D3E5 		ldrb	r3, [r3, #67]	@ zero_extendqisi2
+ 2715 05e4 013043E2 		sub	r3, r3, #1
+ 2716 05e8 FF2003E2 		and	r2, r3, #255
+ 2717 05ec 4C319FE5 		ldr	r3, .L38+32
+ 2718 05f0 4320C3E5 		strb	r2, [r3, #67]
+ 2719              	.L28:
+ 270:../proyecto.c **** 				}
+ 271:../proyecto.c **** 				credit = 0;
+ 2720              		.loc 1 271 0
+ 2721 05f4 28319FE5 		ldr	r3, .L38+4
+ 2722 05f8 0020A0E3 		mov	r2, #0
+ 2723 05fc B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 272:../proyecto.c **** 				plotWelcomeScreen(); /* Visualiza pantalla inicial */
+ 2724              		.loc 1 272 0
+ 2725 0600 FEFFFFEB 		bl	plotWelcomeScreen
+ 273:../proyecto.c **** 				state = demo_waiting; /* Salta al estado demo_waiting */
+ 2726              		.loc 1 273 0
+ 2727 0604 1C319FE5 		ldr	r3, .L38+8
+ 2728 0608 0020A0E3 		mov	r2, #0
+ 2729 060c 0020C3E5 		strb	r2, [r3, #0]
+ 2730              	.L24:
+ 2731              	.LBE2:
+ 274:../proyecto.c **** 
+ 275:../proyecto.c **** 			}
+ 276:../proyecto.c **** 			if (coinAcceptorMsg.flag) /* Chequea si se ha introducido una moneda (mensaje recibido de la tar
+ 2732              		.loc 1 276 0
+ 2733 0610 1C319FE5 		ldr	r3, .L38+20
+ 2734 0614 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2735 0618 000053E3 		cmp	r3, #0
+ 2736 061c 3B00000A 		beq	.L37
+ 2737              	.LBB3:
+ 277:../proyecto.c **** 			{
+ 278:../proyecto.c **** 				coinAcceptorMsg.flag = FALSE; /* Marca el mensaje como leido */
+ 2738              		.loc 1 278 0
+ 2739 0620 0C319FE5 		ldr	r3, .L38+20
+ 2740 0624 0020A0E3 		mov	r2, #0
+ 2741 0628 0020C3E5 		strb	r2, [r3, #0]
+ 279:../proyecto.c **** 				credit += coinAcceptorMsg.cents; /* Incrementa el saldo */
+ 2742              		.loc 1 279 0
+ 2743 062c 00319FE5 		ldr	r3, .L38+20
+ 2744 0630 0130D3E5 		ldrb	r3, [r3, #1]	@ zero_extendqisi2
+ 2745 0634 0320A0E1 		mov	r2, r3
+ 2746 0638 E4309FE5 		ldr	r3, .L38+4
+ 2747 063c B030D3E1 		ldrh	r3, [r3, #0]
+ 2748 0640 033082E0 		add	r3, r2, r3
+ 2749 0644 0338A0E1 		mov	r3, r3, asl #16
+ 2750 0648 2328A0E1 		mov	r2, r3, lsr #16
+ 2751 064c D0309FE5 		ldr	r3, .L38+4
+ 2752 0650 B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 280:../proyecto.c **** 
+ 281:../proyecto.c **** 				tiempoOcupado(credit);
+ 2753              		.loc 1 281 0
+ 2754 0654 C8309FE5 		ldr	r3, .L38+4
+ 2755 0658 B030D3E1 		ldrh	r3, [r3, #0]
+ 2756 065c 0300A0E1 		mov	r0, r3
+ 2757 0660 FEFFFFEB 		bl	tiempoOcupado
+ 282:../proyecto.c **** 				rtc_time_t end_time = parking.plaza[plazaSelecc - 1].end_time;
+ 2758              		.loc 1 282 0
+ 2759 0664 D0309FE5 		ldr	r3, .L38+28
+ 2760 0668 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2761 066c 012043E2 		sub	r2, r3, #1
+ 2762 0670 C8109FE5 		ldr	r1, .L38+32
+ 2763 0674 0130A0E3 		mov	r3, #1
+ 2764 0678 8221A0E1 		mov	r2, r2, asl #3
+ 2765 067c 022081E0 		add	r2, r1, r2
+ 2766 0680 033082E0 		add	r3, r2, r3
+ 2767 0684 48104BE2 		sub	r1, fp, #72
+ 2768 0688 0320A0E1 		mov	r2, r3
+ 2769 068c 0730A0E3 		mov	r3, #7
+ 2770 0690 0100A0E1 		mov	r0, r1
+ 2771 0694 0210A0E1 		mov	r1, r2
+ 2772 0698 0320A0E1 		mov	r2, r3
+ 2773 069c FEFFFFEB 		bl	memcpy
+ 283:../proyecto.c **** 				convertirFechaHora(end_time, bufferFechaLiberacion, diaSemana);
+ 2774              		.loc 1 283 0
+ 2775 06a0 34204BE2 		sub	r2, fp, #52
+ 2776 06a4 38304BE2 		sub	r3, fp, #56
+ 2777 06a8 48104BE2 		sub	r1, fp, #72
+ 2778 06ac 030091E8 		ldmia	r1, {r0, r1}
+ 2779 06b0 FEFFFFEB 		bl	convertirFechaHora
+ 284:../proyecto.c **** 
+ 285:../proyecto.c **** 				lcd_putint(200, 140, BLACK, credit);
+ 2780              		.loc 1 285 0
+ 2781 06b4 68309FE5 		ldr	r3, .L38+4
+ 2782 06b8 B030D3E1 		ldrh	r3, [r3, #0]
+ 2783 06bc C800A0E3 		mov	r0, #200
+ 2784 06c0 8C10A0E3 		mov	r1, #140
+ 2785 06c4 0F20A0E3 		mov	r2, #15
+ 2786 06c8 FEFFFFEB 		bl	lcd_putint
+ 286:../proyecto.c **** 				lcd_puts(100, 155, BLACK, bufferFechaLiberacion);
+ 2787              		.loc 1 286 0
+ 2788 06cc 34304BE2 		sub	r3, fp, #52
+ 2789 06d0 6400A0E3 		mov	r0, #100
+ 2790 06d4 9B10A0E3 		mov	r1, #155
+ 2791 06d8 0F20A0E3 		mov	r2, #15
+ 2792 06dc FEFFFFEB 		bl	lcd_puts
+ 287:../proyecto.c **** 				ticks = 500; /* Restaura el tiempo maximo sin actividad que permanece en este estado */
+ 2793              		.loc 1 287 0
+ 2794 06e0 48309FE5 		ldr	r3, .L38+16
+ 2795 06e4 7D2FA0E3 		mov	r2, #500
+ 2796 06e8 B020C3E1 		strh	r2, [r3, #0]	@ movhi
+ 2797              	.LBE3:
+ 288:../proyecto.c **** 			}
+ 289:../proyecto.c **** 			break;
+ 2798              		.loc 1 289 0
+ 2799 06ec 080000EA 		b	.L5
+ 2800              	.L33:
+ 167:../proyecto.c **** 			break;
+ 2801              		.loc 1 167 0
+ 2802 06f0 0000A0E1 		mov	r0, r0	@ nop
+ 2803 06f4 060000EA 		b	.L5
+ 2804              	.L34:
+ 183:../proyecto.c **** 			break;
+ 2805              		.loc 1 183 0
+ 2806 06f8 0000A0E1 		mov	r0, r0	@ nop
+ 2807 06fc 040000EA 		b	.L5
+ 2808              	.L35:
+ 199:../proyecto.c **** 			break;
+ 2809              		.loc 1 199 0
+ 2810 0700 0000A0E1 		mov	r0, r0	@ nop
+ 2811 0704 020000EA 		b	.L5
+ 2812              	.L36:
+ 224:../proyecto.c **** 			break;
+ 2813              		.loc 1 224 0
+ 2814 0708 0000A0E1 		mov	r0, r0	@ nop
+ 2815 070c 000000EA 		b	.L5
+ 2816              	.L37:
+ 2817              		.loc 1 289 0
+ 2818 0710 0000A0E1 		mov	r0, r0	@ nop
+ 2819              	.L5:
+ 290:../proyecto.c **** 		}
+ 291:../proyecto.c **** }
+ 2820              		.loc 1 291 0
+ 2821 0714 0CD04BE2 		sub	sp, fp, #12
+ 2822 0718 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 2823 071c 1EFF2FE1 		bx	lr
+ 2824              	.L39:
+ 2825              		.align	2
+ 2826              	.L38:
+ 2827 0720 03000000 		.word	init.4237
+ 2828 0724 44000000 		.word	credit.4245
+ 2829 0728 46000000 		.word	state.4244
+ 2830 072c 00000000 		.word	tsPressedMsg
+ 2831 0730 48000000 		.word	ticks.4246
+ 2832 0734 00000000 		.word	coinAcceptorMsg
+ 2833 0738 00000000 		.word	coinsMoverMsg
+ 2834 073c 00000000 		.word	plazaSelecc
+ 2835 0740 00000000 		.word	parking
+ 2836 0744 00000000 		.word	.LC0
+ 2837 0748 14000000 		.word	.LC1
+ 2838 074c 28000000 		.word	.LC2
+ 2839 0750 38000000 		.word	.LC3
+ 2840 0754 44000000 		.word	.LC4
+ 2841 0758 54000000 		.word	.LC5
+ 2842 075c 00000000 		.word	printTicketFlag
+ 2843              		.cfi_endproc
+ 2844              	.LFE1:
+ 2846              		.align	2
+ 2847              		.global	ticketPrinterTask
+ 2849              	ticketPrinterTask:
+ 2850              	.LFB2:
+ 292:../proyecto.c **** 
+ 293:../proyecto.c **** /*
+ 294:../proyecto.c ****  ** Emula el comportamiento de la impresora de tickets:
+ 295:../proyecto.c ****  **   Cada segundo muestrea si ha recibido un mensaje de la tarea principal enviar a traves de la U
+ 296:../proyecto.c ****  */
+ 297:../proyecto.c **** void ticketPrinterTask(void) {
+ 2851              		.loc 1 297 0
+ 2852              		.cfi_startproc
+ 2853              		@ Function supports interworking.
+ 2854              		@ args = 0, pretend = 0, frame = 0
+ 2855              		@ frame_needed = 1, uses_anonymous_args = 0
+ 2856 0760 0DC0A0E1 		mov	ip, sp
+ 2857              	.LCFI4:
+ 2858              		.cfi_def_cfa_register 12
+ 2859 0764 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 2860 0768 04B04CE2 		sub	fp, ip, #4
+ 2861              		.cfi_offset 14, -8
+ 2862              		.cfi_offset 13, -12
+ 2863              		.cfi_offset 11, -16
+ 2864              	.LCFI5:
+ 2865              		.cfi_def_cfa 11, 4
+ 298:../proyecto.c **** 	if (printTicketFlag) {
+ 2866              		.loc 1 298 0
+ 2867 076c 24309FE5 		ldr	r3, .L42
+ 2868 0770 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2869 0774 000053E3 		cmp	r3, #0
+ 2870 0778 0300000A 		beq	.L40
+ 299:../proyecto.c **** 		printTicket();
+ 2871              		.loc 1 299 0
+ 2872 077c FEFFFFEB 		bl	printTicket
+ 300:../proyecto.c **** 		printTicketFlag = FALSE;
+ 2873              		.loc 1 300 0
+ 2874 0780 10309FE5 		ldr	r3, .L42
+ 2875 0784 0020A0E3 		mov	r2, #0
+ 2876 0788 0020C3E5 		strb	r2, [r3, #0]
+ 2877              	.L40:
+ 301:../proyecto.c **** 	}
+ 302:../proyecto.c **** }
+ 2878              		.loc 1 302 0
+ 2879 078c 0CD04BE2 		sub	sp, fp, #12
+ 2880 0790 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 2881 0794 1EFF2FE1 		bx	lr
+ 2882              	.L43:
+ 2883              		.align	2
+ 2884              	.L42:
+ 2885 0798 00000000 		.word	printTicketFlag
+ 2886              		.cfi_endproc
+ 2887              	.LFE2:
+ 2889              		.section	.rodata
+ 2890 005d 000000   		.align	2
+ 2891              	.LC8:
+ 2892 0060 506C617A 		.ascii	"Plaza: \000"
+ 2892      613A2000 
+ 2893              		.align	2
+ 2894              	.LC9:
+ 2895 0068 0A00     		.ascii	"\012\000"
+ 2896 006a 0000     		.align	2
+ 2897              	.LC10:
+ 2898 006c 46696E20 		.ascii	"Fin del estacionamiento: \000"
+ 2898      64656C20 
+ 2898      65737461 
+ 2898      63696F6E 
+ 2898      616D6965 
+ 2899 0086 0000     		.align	2
+ 2900              	.LC11:
+ 2901 0088 47726163 		.ascii	"Gracias por su visita\012\000"
+ 2901      69617320 
+ 2901      706F7220 
+ 2901      73752076 
+ 2901      69736974 
+ 2902 009f 00       		.align	2
+ 2903              	.LC6:
+ 2904 00a0 2D2D2D2D 		.ascii	"----- TICKET DE APARCAMIENTO -----\012\000"
+ 2904      2D205449 
+ 2904      434B4554 
+ 2904      20444520 
+ 2904      41504152 
+ 2905              		.align	2
+ 2906              	.LC7:
+ 2907 00c4 2D2D2D2D 		.ascii	"----------------------------------\012\000"
+ 2907      2D2D2D2D 
+ 2907      2D2D2D2D 
+ 2907      2D2D2D2D 
+ 2907      2D2D2D2D 
+ 2908              		.text
+ 2909              		.align	2
+ 2910              		.global	printTicket
+ 2912              	printTicket:
+ 2913              	.LFB3:
+ 303:../proyecto.c **** void printTicket(void) {
+ 2914              		.loc 1 303 0
+ 2915              		.cfi_startproc
+ 2916              		@ Function supports interworking.
+ 2917              		@ args = 0, pretend = 0, frame = 120
+ 2918              		@ frame_needed = 1, uses_anonymous_args = 0
+ 2919 079c 0DC0A0E1 		mov	ip, sp
+ 2920              	.LCFI6:
+ 2921              		.cfi_def_cfa_register 12
+ 2922 07a0 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 2923 07a4 04B04CE2 		sub	fp, ip, #4
+ 2924              		.cfi_offset 14, -8
+ 2925              		.cfi_offset 13, -12
+ 2926              		.cfi_offset 11, -16
+ 2927              	.LCFI7:
+ 2928              		.cfi_def_cfa 11, 4
+ 2929 07a8 78D04DE2 		sub	sp, sp, #120
+ 304:../proyecto.c **** 	char ticketHeader[] = "----- TICKET DE APARCAMIENTO -----\n";
+ 2930              		.loc 1 304 0
+ 2931 07ac 48319FE5 		ldr	r3, .L45
+ 2932 07b0 30C04BE2 		sub	ip, fp, #48
+ 2933 07b4 03E0A0E1 		mov	lr, r3
+ 2934 07b8 0F00BEE8 		ldmia	lr!, {r0, r1, r2, r3}
+ 2935 07bc 0F00ACE8 		stmia	ip!, {r0, r1, r2, r3}
+ 2936 07c0 0F00BEE8 		ldmia	lr!, {r0, r1, r2, r3}
+ 2937 07c4 0F00ACE8 		stmia	ip!, {r0, r1, r2, r3}
+ 2938 07c8 00309EE5 		ldr	r3, [lr, #0]
+ 2939 07cc 00308CE5 		str	r3, [ip, #0]
+ 305:../proyecto.c **** 	char ticketFooter[] = "----------------------------------\n";
+ 2940              		.loc 1 305 0
+ 2941 07d0 28319FE5 		ldr	r3, .L45+4
+ 2942 07d4 54C04BE2 		sub	ip, fp, #84
+ 2943 07d8 03E0A0E1 		mov	lr, r3
+ 2944 07dc 0F00BEE8 		ldmia	lr!, {r0, r1, r2, r3}
+ 2945 07e0 0F00ACE8 		stmia	ip!, {r0, r1, r2, r3}
+ 2946 07e4 0F00BEE8 		ldmia	lr!, {r0, r1, r2, r3}
+ 2947 07e8 0F00ACE8 		stmia	ip!, {r0, r1, r2, r3}
+ 2948 07ec 00309EE5 		ldr	r3, [lr, #0]
+ 2949 07f0 00308CE5 		str	r3, [ip, #0]
+ 306:../proyecto.c **** 	char buffer[40];
+ 307:../proyecto.c **** 	char diaSemana[4];
+ 308:../proyecto.c **** 
+ 309:../proyecto.c **** 	uart0_puts(ticketHeader);              // Encabezado del ticket
+ 2950              		.loc 1 309 0
+ 2951 07f4 30304BE2 		sub	r3, fp, #48
+ 2952 07f8 0300A0E1 		mov	r0, r3
+ 2953 07fc FEFFFFEB 		bl	uart0_puts
+ 310:../proyecto.c **** 	uart0_puts("Plaza: ");
+ 2954              		.loc 1 310 0
+ 2955 0800 FC009FE5 		ldr	r0, .L45+8
+ 2956 0804 FEFFFFEB 		bl	uart0_puts
+ 311:../proyecto.c **** 	uart0_putint(plazaSelecc);                    // Número de plaza
+ 2957              		.loc 1 311 0
+ 2958 0808 F8309FE5 		ldr	r3, .L45+12
+ 2959 080c 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2960 0810 0300A0E1 		mov	r0, r3
+ 2961 0814 FEFFFFEB 		bl	uart0_putint
+ 312:../proyecto.c **** 	uart0_puts("\n");
+ 2962              		.loc 1 312 0
+ 2963 0818 EC009FE5 		ldr	r0, .L45+16
+ 2964 081c FEFFFFEB 		bl	uart0_puts
+ 313:../proyecto.c **** 
+ 314:../proyecto.c **** 	uart0_puts("Fin del estacionamiento: ");
+ 2965              		.loc 1 314 0
+ 2966 0820 E8009FE5 		ldr	r0, .L45+20
+ 2967 0824 FEFFFFEB 		bl	uart0_puts
+ 315:../proyecto.c **** 	convertirFechaHora(parking.plaza[plazaSelecc - 1].end_time, buffer,
+ 2968              		.loc 1 315 0
+ 2969 0828 D8309FE5 		ldr	r3, .L45+12
+ 2970 082c 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 2971 0830 012043E2 		sub	r2, r3, #1
+ 2972 0834 D8109FE5 		ldr	r1, .L45+24
+ 2973 0838 0130A0E3 		mov	r3, #1
+ 2974 083c 8221A0E1 		mov	r2, r2, asl #3
+ 2975 0840 022081E0 		add	r2, r1, r2
+ 2976 0844 033082E0 		add	r3, r2, r3
+ 2977 0848 7CE04BE2 		sub	lr, fp, #124
+ 2978 084c 80C04BE2 		sub	ip, fp, #128
+ 2979 0850 0020D3E5 		ldrb	r2, [r3, #0]	@ zero_extendqisi2
+ 2980 0854 0110D3E5 		ldrb	r1, [r3, #1]	@ zero_extendqisi2
+ 2981 0858 0114A0E1 		mov	r1, r1, asl #8
+ 2982 085c 022081E1 		orr	r2, r1, r2
+ 2983 0860 0210D3E5 		ldrb	r1, [r3, #2]	@ zero_extendqisi2
+ 2984 0864 0118A0E1 		mov	r1, r1, asl #16
+ 2985 0868 022081E1 		orr	r2, r1, r2
+ 2986 086c 0310D3E5 		ldrb	r1, [r3, #3]	@ zero_extendqisi2
+ 2987 0870 011CA0E1 		mov	r1, r1, asl #24
+ 2988 0874 021081E1 		orr	r1, r1, r2
+ 2989 0878 0020A0E3 		mov	r2, #0
+ 2990 087c 0120A0E1 		mov	r2, r1
+ 2991 0880 0410D3E5 		ldrb	r1, [r3, #4]	@ zero_extendqisi2
+ 2992 0884 0500D3E5 		ldrb	r0, [r3, #5]	@ zero_extendqisi2
+ 2993 0888 0004A0E1 		mov	r0, r0, asl #8
+ 2994 088c 011080E1 		orr	r1, r0, r1
+ 2995 0890 0630D3E5 		ldrb	r3, [r3, #6]	@ zero_extendqisi2
+ 2996 0894 0338A0E1 		mov	r3, r3, asl #16
+ 2997 0898 011083E1 		orr	r1, r3, r1
+ 2998 089c 0030A0E3 		mov	r3, #0
+ 2999 08a0 FF14C1E3 		bic	r1, r1, #-16777216
+ 3000 08a4 FF3403E2 		and	r3, r3, #-16777216
+ 3001 08a8 033081E1 		orr	r3, r1, r3
+ 3002 08ac 0200A0E1 		mov	r0, r2
+ 3003 08b0 0310A0E1 		mov	r1, r3
+ 3004 08b4 0E20A0E1 		mov	r2, lr
+ 3005 08b8 0C30A0E1 		mov	r3, ip
+ 3006 08bc FEFFFFEB 		bl	convertirFechaHora
+ 316:../proyecto.c **** 			diaSemana);
+ 317:../proyecto.c **** 	uart0_puts("\n");
+ 3007              		.loc 1 317 0
+ 3008 08c0 44009FE5 		ldr	r0, .L45+16
+ 3009 08c4 FEFFFFEB 		bl	uart0_puts
+ 318:../proyecto.c **** 	uart0_puts(buffer);
+ 3010              		.loc 1 318 0
+ 3011 08c8 7C304BE2 		sub	r3, fp, #124
+ 3012 08cc 0300A0E1 		mov	r0, r3
+ 3013 08d0 FEFFFFEB 		bl	uart0_puts
+ 319:../proyecto.c **** 	uart0_puts("\n");
+ 3014              		.loc 1 319 0
+ 3015 08d4 30009FE5 		ldr	r0, .L45+16
+ 3016 08d8 FEFFFFEB 		bl	uart0_puts
+ 320:../proyecto.c **** 
+ 321:../proyecto.c **** 	uart0_puts("Gracias por su visita\n"); // Mensaje adicional
+ 3017              		.loc 1 321 0
+ 3018 08dc 34009FE5 		ldr	r0, .L45+28
+ 3019 08e0 FEFFFFEB 		bl	uart0_puts
+ 322:../proyecto.c **** 	uart0_puts(ticketFooter);              // Pie del ticket
+ 3020              		.loc 1 322 0
+ 3021 08e4 54304BE2 		sub	r3, fp, #84
+ 3022 08e8 0300A0E1 		mov	r0, r3
+ 3023 08ec FEFFFFEB 		bl	uart0_puts
+ 323:../proyecto.c **** }
+ 3024              		.loc 1 323 0
+ 3025 08f0 0CD04BE2 		sub	sp, fp, #12
+ 3026 08f4 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 3027 08f8 1EFF2FE1 		bx	lr
+ 3028              	.L46:
+ 3029              		.align	2
+ 3030              	.L45:
+ 3031 08fc A0000000 		.word	.LC6
+ 3032 0900 C4000000 		.word	.LC7
+ 3033 0904 60000000 		.word	.LC8
+ 3034 0908 00000000 		.word	plazaSelecc
+ 3035 090c 68000000 		.word	.LC9
+ 3036 0910 6C000000 		.word	.LC10
+ 3037 0914 00000000 		.word	parking
+ 3038 0918 88000000 		.word	.LC11
+ 3039              		.cfi_endproc
+ 3040              	.LFE3:
+ 3042              		.align	2
+ 3043              		.global	clockTask
+ 3045              	clockTask:
+ 3046              	.LFB4:
+ 324:../proyecto.c **** 
+ 325:../proyecto.c **** /*
+ 326:../proyecto.c ****  ** Cada segundo visualiza la fecha/hora en la pantalla y libera aquellas plazas cuya hora de final
+ 327:../proyecto.c ****  */
+ 328:../proyecto.c **** void clockTask(void) {
+ 3047              		.loc 1 328 0
+ 3048              		.cfi_startproc
+ 3049              		@ Function supports interworking.
+ 3050              		@ args = 0, pretend = 0, frame = 0
+ 3051              		@ frame_needed = 1, uses_anonymous_args = 0
+ 3052 091c 0DC0A0E1 		mov	ip, sp
+ 3053              	.LCFI8:
+ 3054              		.cfi_def_cfa_register 12
+ 3055 0920 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 3056 0924 04B04CE2 		sub	fp, ip, #4
+ 3057              		.cfi_offset 14, -8
+ 3058              		.cfi_offset 13, -12
+ 3059              		.cfi_offset 11, -16
+ 3060              	.LCFI9:
+ 3061              		.cfi_def_cfa 11, 4
+ 329:../proyecto.c **** 	static rtc_time_t tiempoActual; // Estructura para guardar el tiempo actual
+ 330:../proyecto.c **** 	static char bufferFechaHora[40]; // Buffer para almacenar la fecha y hora
+ 331:../proyecto.c **** 	static char diaSemana[4]; // Buffer para el día de la semana (3 caracteres + terminador)
+ 332:../proyecto.c **** 
+ 333:../proyecto.c **** 	rtc_gettime(&tiempoActual);
+ 3062              		.loc 1 333 0
+ 3063 0928 34009FE5 		ldr	r0, .L48
+ 3064 092c FEFFFFEB 		bl	rtc_gettime
+ 334:../proyecto.c **** 
+ 335:../proyecto.c **** // Convertir la fecha y hora en un formato de cadena
+ 336:../proyecto.c **** 	convertirFechaHora(tiempoActual, bufferFechaHora, diaSemana);
+ 3065              		.loc 1 336 0
+ 3066 0930 2C309FE5 		ldr	r3, .L48
+ 3067 0934 030093E8 		ldmia	r3, {r0, r1}
+ 3068 0938 28209FE5 		ldr	r2, .L48+4
+ 3069 093c 28309FE5 		ldr	r3, .L48+8
+ 3070 0940 FEFFFFEB 		bl	convertirFechaHora
+ 337:../proyecto.c **** 	lcd_puts(40, 10, BLACK, bufferFechaHora);
+ 3071              		.loc 1 337 0
+ 3072 0944 2800A0E3 		mov	r0, #40
+ 3073 0948 0A10A0E3 		mov	r1, #10
+ 3074 094c 0F20A0E3 		mov	r2, #15
+ 3075 0950 10309FE5 		ldr	r3, .L48+4
+ 3076 0954 FEFFFFEB 		bl	lcd_puts
+ 338:../proyecto.c **** 
+ 339:../proyecto.c **** }
+ 3077              		.loc 1 339 0
+ 3078 0958 0CD04BE2 		sub	sp, fp, #12
+ 3079 095c 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 3080 0960 1EFF2FE1 		bx	lr
+ 3081              	.L49:
+ 3082              		.align	2
+ 3083              	.L48:
+ 3084 0964 10000000 		.word	tiempoActual.4270
+ 3085 0968 18000000 		.word	bufferFechaHora.4271
+ 3086 096c 40000000 		.word	diaSemana.4272
+ 3087              		.cfi_endproc
+ 3088              	.LFE4:
+ 3090              		.align	2
+ 3091              		.global	tsScanTask
+ 3093              	tsScanTask:
+ 3094              	.LFB5:
+ 340:../proyecto.c **** 
+ 341:../proyecto.c **** /*
+ 342:../proyecto.c ****  ** Cada 50 ms muestrea la touchscreen y envia un mensaje a la tarea principal con la posicion del 
+ 343:../proyecto.c ****  */
+ 344:../proyecto.c **** void tsScanTask(void) {
+ 3095              		.loc 1 344 0
+ 3096              		.cfi_startproc
+ 3097              		@ Function supports interworking.
+ 3098              		@ args = 0, pretend = 0, frame = 0
+ 3099              		@ frame_needed = 1, uses_anonymous_args = 0
+ 3100 0970 0DC0A0E1 		mov	ip, sp
+ 3101              	.LCFI10:
+ 3102              		.cfi_def_cfa_register 12
+ 3103 0974 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 3104 0978 04B04CE2 		sub	fp, ip, #4
+ 3105              		.cfi_offset 14, -8
+ 3106              		.cfi_offset 13, -12
+ 3107              		.cfi_offset 11, -16
+ 3108              	.LCFI11:
+ 3109              		.cfi_def_cfa 11, 4
+ 345:../proyecto.c **** 	static boolean init = TRUE;
+ 346:../proyecto.c **** 	static enum {
+ 347:../proyecto.c **** 		wait_keydown, scan, wait_keyup
+ 348:../proyecto.c **** 	} state;
+ 349:../proyecto.c **** 
+ 350:../proyecto.c **** 	if (init) {
+ 3110              		.loc 1 350 0
+ 3111 097c C4309FE5 		ldr	r3, .L60
+ 3112 0980 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 3113 0984 000053E3 		cmp	r3, #0
+ 3114 0988 0600000A 		beq	.L51
+ 351:../proyecto.c **** 		init = FALSE;
+ 3115              		.loc 1 351 0
+ 3116 098c B4309FE5 		ldr	r3, .L60
+ 3117 0990 0020A0E3 		mov	r2, #0
+ 3118 0994 0020C3E5 		strb	r2, [r3, #0]
+ 352:../proyecto.c **** 		state = wait_keydown;
+ 3119              		.loc 1 352 0
+ 3120 0998 AC309FE5 		ldr	r3, .L60+4
+ 3121 099c 0020A0E3 		mov	r2, #0
+ 3122 09a0 0020C3E5 		strb	r2, [r3, #0]
+ 3123 09a4 240000EA 		b	.L50
+ 3124              	.L51:
+ 353:../proyecto.c **** 	} else
+ 354:../proyecto.c **** 		switch (state) {
+ 3125              		.loc 1 354 0
+ 3126 09a8 9C309FE5 		ldr	r3, .L60+4
+ 3127 09ac 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 3128 09b0 010053E3 		cmp	r3, #1
+ 3129 09b4 0B00000A 		beq	.L54
+ 3130 09b8 020053E3 		cmp	r3, #2
+ 3131 09bc 1300000A 		beq	.L55
+ 3132 09c0 000053E3 		cmp	r3, #0
+ 3133 09c4 1C00001A 		bne	.L50
+ 3134              	.L53:
+ 355:../proyecto.c **** 		case wait_keydown: /* Estado esperando la presion de la pantalla */
+ 356:../proyecto.c **** 			if (ts_pressed()) /* Chequea si la pantalla esta presionada */
+ 3135              		.loc 1 356 0
+ 3136 09c8 FEFFFFEB 		bl	ts_pressed
+ 3137 09cc 0030A0E1 		mov	r3, r0
+ 3138 09d0 000053E3 		cmp	r3, #0
+ 3139 09d4 1500000A 		beq	.L58
+ 357:../proyecto.c **** 				state = scan; /* Salta al estado scan */
+ 3140              		.loc 1 357 0
+ 3141 09d8 6C309FE5 		ldr	r3, .L60+4
+ 3142 09dc 0120A0E3 		mov	r2, #1
+ 3143 09e0 0020C3E5 		strb	r2, [r3, #0]
+ 358:../proyecto.c **** 			break;
+ 3144              		.loc 1 358 0
+ 3145 09e4 140000EA 		b	.L50
+ 3146              	.L54:
+ 359:../proyecto.c **** 
+ 360:../proyecto.c **** 		case scan: /* Estado en que escanea la pantalla */
+ 361:../proyecto.c **** 			ts_getpos(&tsPressedMsg.x, &tsPressedMsg.y); /* Lee la pantalla */
+ 3147              		.loc 1 361 0
+ 3148 09e8 60009FE5 		ldr	r0, .L60+8
+ 3149 09ec 60109FE5 		ldr	r1, .L60+12
+ 3150 09f0 FEFFFFEB 		bl	ts_getpos
+ 362:../proyecto.c **** 			tsPressedMsg.flag = TRUE; /* Envia un mensaje con el valor de la posición presionada */
+ 3151              		.loc 1 362 0
+ 3152 09f4 5C309FE5 		ldr	r3, .L60+16
+ 3153 09f8 0120A0E3 		mov	r2, #1
+ 3154 09fc 0020C3E5 		strb	r2, [r3, #0]
+ 363:../proyecto.c **** 			state = wait_keyup; /* Salta al estado wait_keyup */
+ 3155              		.loc 1 363 0
+ 3156 0a00 44309FE5 		ldr	r3, .L60+4
+ 3157 0a04 0220A0E3 		mov	r2, #2
+ 3158 0a08 0020C3E5 		strb	r2, [r3, #0]
+ 364:../proyecto.c **** 			break;
+ 3159              		.loc 1 364 0
+ 3160 0a0c 0A0000EA 		b	.L50
+ 3161              	.L55:
+ 365:../proyecto.c **** 
+ 366:../proyecto.c **** 		case wait_keyup: // Estado esperando la depresion de la pantalla
+ 367:../proyecto.c **** 			if (!ts_pressed()) // Chequea si la pantalla ya no esta presionada
+ 3162              		.loc 1 367 0
+ 3163 0a10 FEFFFFEB 		bl	ts_pressed
+ 3164 0a14 0030A0E1 		mov	r3, r0
+ 3165 0a18 000053E3 		cmp	r3, #0
+ 3166 0a1c 0500001A 		bne	.L59
+ 368:../proyecto.c **** 				state = wait_keydown; // Salta al estado wait_keydown
+ 3167              		.loc 1 368 0
+ 3168 0a20 24309FE5 		ldr	r3, .L60+4
+ 3169 0a24 0020A0E3 		mov	r2, #0
+ 3170 0a28 0020C3E5 		strb	r2, [r3, #0]
+ 369:../proyecto.c **** 			break;
+ 3171              		.loc 1 369 0
+ 3172 0a2c 020000EA 		b	.L50
+ 3173              	.L58:
+ 358:../proyecto.c **** 			break;
+ 3174              		.loc 1 358 0
+ 3175 0a30 0000A0E1 		mov	r0, r0	@ nop
+ 3176 0a34 000000EA 		b	.L50
+ 3177              	.L59:
+ 3178              		.loc 1 369 0
+ 3179 0a38 0000A0E1 		mov	r0, r0	@ nop
+ 3180              	.L50:
+ 370:../proyecto.c **** 		}
+ 371:../proyecto.c **** }
+ 3181              		.loc 1 371 0
+ 3182 0a3c 0CD04BE2 		sub	sp, fp, #12
+ 3183 0a40 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 3184 0a44 1EFF2FE1 		bx	lr
+ 3185              	.L61:
+ 3186              		.align	2
+ 3187              	.L60:
+ 3188 0a48 02000000 		.word	init.4276
+ 3189 0a4c 0D000000 		.word	state.4281
+ 3190 0a50 02000000 		.word	tsPressedMsg+2
+ 3191 0a54 04000000 		.word	tsPressedMsg+4
+ 3192 0a58 00000000 		.word	tsPressedMsg
+ 3193              		.cfi_endproc
+ 3194              	.LFE5:
+ 3196              		.align	2
+ 3197              		.global	coinsAcceptorTask
+ 3199              	coinsAcceptorTask:
+ 3200              	.LFB6:
+ 372:../proyecto.c **** 
+ 373:../proyecto.c **** /*
+ 374:../proyecto.c ****  ** Emula el comportamiento de un reconocedor de monedas:
+ 375:../proyecto.c ****  **   Cada 50 ms muestrea el keypad y envia un mensaje a la tarea principal con el valor de la mone
+ 376:../proyecto.c ****  */
+ 377:../proyecto.c **** void coinsAcceptorTask(void) {
+ 3201              		.loc 1 377 0
+ 3202              		.cfi_startproc
+ 3203              		@ Function supports interworking.
+ 3204              		@ args = 0, pretend = 0, frame = 0
+ 3205              		@ frame_needed = 1, uses_anonymous_args = 0
+ 3206 0a5c 0DC0A0E1 		mov	ip, sp
+ 3207              	.LCFI12:
+ 3208              		.cfi_def_cfa_register 12
+ 3209 0a60 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 3210 0a64 04B04CE2 		sub	fp, ip, #4
+ 3211              		.cfi_offset 14, -8
+ 3212              		.cfi_offset 13, -12
+ 3213              		.cfi_offset 11, -16
+ 3214              	.LCFI13:
+ 3215              		.cfi_def_cfa 11, 4
+ 378:../proyecto.c **** 	static boolean init = TRUE;
+ 379:../proyecto.c **** 	static enum {
+ 380:../proyecto.c **** 		wait_keydown, scan, wait_keyup
+ 381:../proyecto.c **** 	} state;
+ 382:../proyecto.c **** 
+ 383:../proyecto.c **** 	if (init) {
+ 3216              		.loc 1 383 0
+ 3217 0a68 40319FE5 		ldr	r3, .L78
+ 3218 0a6c 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 3219 0a70 000053E3 		cmp	r3, #0
+ 3220 0a74 0600000A 		beq	.L63
+ 384:../proyecto.c **** 		init = FALSE;
+ 3221              		.loc 1 384 0
+ 3222 0a78 30319FE5 		ldr	r3, .L78
+ 3223 0a7c 0020A0E3 		mov	r2, #0
+ 3224 0a80 0020C3E5 		strb	r2, [r3, #0]
+ 385:../proyecto.c **** 		state = wait_keydown;
+ 3225              		.loc 1 385 0
+ 3226 0a84 28319FE5 		ldr	r3, .L78+4
+ 3227 0a88 0020A0E3 		mov	r2, #0
+ 3228 0a8c 0020C3E5 		strb	r2, [r3, #0]
+ 3229 0a90 430000EA 		b	.L62
+ 3230              	.L63:
+ 386:../proyecto.c **** 	} else
+ 387:../proyecto.c **** 		switch (state) {
+ 3231              		.loc 1 387 0
+ 3232 0a94 18319FE5 		ldr	r3, .L78+4
+ 3233 0a98 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 3234 0a9c 010053E3 		cmp	r3, #1
+ 3235 0aa0 0B00000A 		beq	.L66
+ 3236 0aa4 020053E3 		cmp	r3, #2
+ 3237 0aa8 3200000A 		beq	.L67
+ 3238 0aac 000053E3 		cmp	r3, #0
+ 3239 0ab0 3B00001A 		bne	.L62
+ 3240              	.L65:
+ 388:../proyecto.c **** 		case wait_keydown: /* Estado esperando la presion teclas */
+ 389:../proyecto.c **** 			if (keypad_pressed()) /* Chequea si hay una tecla presionada */
+ 3241              		.loc 1 389 0
+ 3242 0ab4 FEFFFFEB 		bl	keypad_pressed
+ 3243 0ab8 0030A0E1 		mov	r3, r0
+ 3244 0abc 000053E3 		cmp	r3, #0
+ 3245 0ac0 3400000A 		beq	.L76
+ 390:../proyecto.c **** 				state = scan; /* Salta al estado scan */
+ 3246              		.loc 1 390 0
+ 3247 0ac4 E8309FE5 		ldr	r3, .L78+4
+ 3248 0ac8 0120A0E3 		mov	r2, #1
+ 3249 0acc 0020C3E5 		strb	r2, [r3, #0]
+ 391:../proyecto.c **** 			break;
+ 3250              		.loc 1 391 0
+ 3251 0ad0 330000EA 		b	.L62
+ 3252              	.L66:
+ 392:../proyecto.c **** 		case scan: /* Estado en que escanea el teclado */
+ 393:../proyecto.c **** 			switch (keypad_scan()) /* Lee el teclado */
+ 3253              		.loc 1 393 0
+ 3254 0ad4 FEFFFFEB 		bl	keypad_scan
+ 3255 0ad8 0030A0E1 		mov	r3, r0
+ 3256 0adc 030053E3 		cmp	r3, #3
+ 3257 0ae0 03F19F97 		ldrls	pc, [pc, r3, asl #2]
+ 3258 0ae4 1F0000EA 		b	.L69
+ 3259              	.L74:
+ 3260 0ae8 4C0B0000 		.word	.L70
+ 3261 0aec 300B0000 		.word	.L71
+ 3262 0af0 140B0000 		.word	.L72
+ 3263 0af4 F80A0000 		.word	.L73
+ 3264              	.L73:
+ 394:../proyecto.c **** 			{
+ 395:../proyecto.c **** 			case KEYPAD_KEY3: /* La tecla F esta asociada a la moneda de 0,10 euros */
+ 396:../proyecto.c **** 				coinAcceptorMsg.cents = 10; /* Envia un mensaje con el valor de la moneda */
+ 3265              		.loc 1 396 0
+ 3266 0af8 B8309FE5 		ldr	r3, .L78+8
+ 3267 0afc 0A20A0E3 		mov	r2, #10
+ 3268 0b00 0120C3E5 		strb	r2, [r3, #1]
+ 397:../proyecto.c **** 				coinAcceptorMsg.flag = TRUE;
+ 3269              		.loc 1 397 0
+ 3270 0b04 AC309FE5 		ldr	r3, .L78+8
+ 3271 0b08 0120A0E3 		mov	r2, #1
+ 3272 0b0c 0020C3E5 		strb	r2, [r3, #0]
+ 398:../proyecto.c **** 				break;
+ 3273              		.loc 1 398 0
+ 3274 0b10 140000EA 		b	.L69
+ 3275              	.L72:
+ 399:../proyecto.c **** 			case KEYPAD_KEY2:
+ 400:../proyecto.c **** 				coinAcceptorMsg.cents = 20; /* Envia un mensaje con el valor de la moneda */
+ 3276              		.loc 1 400 0
+ 3277 0b14 9C309FE5 		ldr	r3, .L78+8
+ 3278 0b18 1420A0E3 		mov	r2, #20
+ 3279 0b1c 0120C3E5 		strb	r2, [r3, #1]
+ 401:../proyecto.c **** 				coinAcceptorMsg.flag = TRUE;
+ 3280              		.loc 1 401 0
+ 3281 0b20 90309FE5 		ldr	r3, .L78+8
+ 3282 0b24 0120A0E3 		mov	r2, #1
+ 3283 0b28 0020C3E5 		strb	r2, [r3, #0]
+ 402:../proyecto.c **** 				break;
+ 3284              		.loc 1 402 0
+ 3285 0b2c 0D0000EA 		b	.L69
+ 3286              	.L71:
+ 403:../proyecto.c **** 			case KEYPAD_KEY1:
+ 404:../proyecto.c **** 				coinAcceptorMsg.cents = 50; /* Envia un mensaje con el valor de la moneda */
+ 3287              		.loc 1 404 0
+ 3288 0b30 80309FE5 		ldr	r3, .L78+8
+ 3289 0b34 3220A0E3 		mov	r2, #50
+ 3290 0b38 0120C3E5 		strb	r2, [r3, #1]
+ 405:../proyecto.c **** 				coinAcceptorMsg.flag = TRUE;
+ 3291              		.loc 1 405 0
+ 3292 0b3c 74309FE5 		ldr	r3, .L78+8
+ 3293 0b40 0120A0E3 		mov	r2, #1
+ 3294 0b44 0020C3E5 		strb	r2, [r3, #0]
+ 406:../proyecto.c **** 				break;
+ 3295              		.loc 1 406 0
+ 3296 0b48 060000EA 		b	.L69
+ 3297              	.L70:
+ 407:../proyecto.c **** 			case KEYPAD_KEY0:
+ 408:../proyecto.c **** 				coinAcceptorMsg.cents = 100; /* Envia un mensaje con el valor de la moneda */
+ 3298              		.loc 1 408 0
+ 3299 0b4c 64309FE5 		ldr	r3, .L78+8
+ 3300 0b50 6420A0E3 		mov	r2, #100
+ 3301 0b54 0120C3E5 		strb	r2, [r3, #1]
+ 409:../proyecto.c **** 				coinAcceptorMsg.flag = TRUE;
+ 3302              		.loc 1 409 0
+ 3303 0b58 58309FE5 		ldr	r3, .L78+8
+ 3304 0b5c 0120A0E3 		mov	r2, #1
+ 3305 0b60 0020C3E5 		strb	r2, [r3, #0]
+ 410:../proyecto.c **** 				break;
+ 3306              		.loc 1 410 0
+ 3307 0b64 0000A0E1 		mov	r0, r0	@ nop
+ 3308              	.L69:
+ 411:../proyecto.c **** 			}
+ 412:../proyecto.c **** 			state = wait_keyup; /* Salta al estado wait_keyup */
+ 3309              		.loc 1 412 0
+ 3310 0b68 44309FE5 		ldr	r3, .L78+4
+ 3311 0b6c 0220A0E3 		mov	r2, #2
+ 3312 0b70 0020C3E5 		strb	r2, [r3, #0]
+ 413:../proyecto.c **** 			break;
+ 3313              		.loc 1 413 0
+ 3314 0b74 0A0000EA 		b	.L62
+ 3315              	.L67:
+ 414:../proyecto.c **** 		case wait_keyup: /* Estado esperando la depresion de teclas  */
+ 415:../proyecto.c **** 			if (!keypad_pressed()) /* Chequea si la tecla ya no esta presionada */
+ 3316              		.loc 1 415 0
+ 3317 0b78 FEFFFFEB 		bl	keypad_pressed
+ 3318 0b7c 0030A0E1 		mov	r3, r0
+ 3319 0b80 000053E3 		cmp	r3, #0
+ 3320 0b84 0500001A 		bne	.L77
+ 416:../proyecto.c **** 				state = wait_keydown; /* Salta al estado wait_keydown */
+ 3321              		.loc 1 416 0
+ 3322 0b88 24309FE5 		ldr	r3, .L78+4
+ 3323 0b8c 0020A0E3 		mov	r2, #0
+ 3324 0b90 0020C3E5 		strb	r2, [r3, #0]
+ 417:../proyecto.c **** 			break;
+ 3325              		.loc 1 417 0
+ 3326 0b94 020000EA 		b	.L62
+ 3327              	.L76:
+ 391:../proyecto.c **** 			break;
+ 3328              		.loc 1 391 0
+ 3329 0b98 0000A0E1 		mov	r0, r0	@ nop
+ 3330 0b9c 000000EA 		b	.L62
+ 3331              	.L77:
+ 3332              		.loc 1 417 0
+ 3333 0ba0 0000A0E1 		mov	r0, r0	@ nop
+ 3334              	.L62:
+ 418:../proyecto.c **** 		}
+ 419:../proyecto.c **** }
+ 3335              		.loc 1 419 0
+ 3336 0ba4 0CD04BE2 		sub	sp, fp, #12
+ 3337 0ba8 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 3338 0bac 1EFF2FE1 		bx	lr
+ 3339              	.L79:
+ 3340              		.align	2
+ 3341              	.L78:
+ 3342 0bb0 01000000 		.word	init.4289
+ 3343 0bb4 0C000000 		.word	state.4294
+ 3344 0bb8 00000000 		.word	coinAcceptorMsg
+ 3345              		.cfi_endproc
+ 3346              	.LFE6:
+ 3348              		.align	2
+ 3349              		.global	coinsMoverTask
+ 3351              	coinsMoverTask:
+ 3352              	.LFB7:
+ 420:../proyecto.c **** 
+ 421:../proyecto.c **** /*
+ 422:../proyecto.c ****  ** Emula el comportamiento del dispositivo que envia las monedas a la alcancia o al cajetin de dev
+ 423:../proyecto.c ****  **   Cada 100 ms muestrea si ha recibido un mensaje de la tarea principal para mover monedas
+ 424:../proyecto.c ****  **   Si van a la alcancia activa durante 1 s los leds y muestra una A en los segs
+ 425:../proyecto.c ****  **   Si van al cajetin de devolucion activa durante 1 segundo los leds y muestra una D en los segs
+ 426:../proyecto.c ****  */
+ 427:../proyecto.c **** void coinsMoverTask(void) {
+ 3353              		.loc 1 427 0
+ 3354              		.cfi_startproc
+ 3355              		@ Function supports interworking.
+ 3356              		@ args = 0, pretend = 0, frame = 0
+ 3357              		@ frame_needed = 1, uses_anonymous_args = 0
+ 3358 0bbc 0DC0A0E1 		mov	ip, sp
+ 3359              	.LCFI14:
+ 3360              		.cfi_def_cfa_register 12
+ 3361 0bc0 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 3362 0bc4 04B04CE2 		sub	fp, ip, #4
+ 3363              		.cfi_offset 14, -8
+ 3364              		.cfi_offset 13, -12
+ 3365              		.cfi_offset 11, -16
+ 3366              	.LCFI15:
+ 3367              		.cfi_def_cfa 11, 4
+ 428:../proyecto.c **** 	static boolean init = TRUE;
+ 429:../proyecto.c **** 	static enum {
+ 430:../proyecto.c **** 		off, on
+ 431:../proyecto.c **** 	} state;
+ 432:../proyecto.c **** 	static uint32 ticks;
+ 433:../proyecto.c **** 
+ 434:../proyecto.c **** 	if (init) {
+ 3368              		.loc 1 434 0
+ 3369 0bc8 0C319FE5 		ldr	r3, .L91
+ 3370 0bcc 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 3371 0bd0 000053E3 		cmp	r3, #0
+ 3372 0bd4 0600000A 		beq	.L81
+ 435:../proyecto.c **** 		init = FALSE;
+ 3373              		.loc 1 435 0
+ 3374 0bd8 FC309FE5 		ldr	r3, .L91
+ 3375 0bdc 0020A0E3 		mov	r2, #0
+ 3376 0be0 0020C3E5 		strb	r2, [r3, #0]
+ 436:../proyecto.c **** 		state = off;
+ 3377              		.loc 1 436 0
+ 3378 0be4 F4309FE5 		ldr	r3, .L91+4
+ 3379 0be8 0020A0E3 		mov	r2, #0
+ 3380 0bec 0020C3E5 		strb	r2, [r3, #0]
+ 3381 0bf0 360000EA 		b	.L80
+ 3382              	.L81:
+ 437:../proyecto.c **** 	} else
+ 438:../proyecto.c **** 		switch (state) {
+ 3383              		.loc 1 438 0
+ 3384 0bf4 E4309FE5 		ldr	r3, .L91+4
+ 3385 0bf8 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 3386 0bfc 000053E3 		cmp	r3, #0
+ 3387 0c00 0200000A 		beq	.L83
+ 3388 0c04 010053E3 		cmp	r3, #1
+ 3389 0c08 1B00000A 		beq	.L84
+ 3390 0c0c 2F0000EA 		b	.L80
+ 3391              	.L83:
+ 439:../proyecto.c **** 		case off: /* Estado con leds y 7-segs apagados */
+ 440:../proyecto.c **** 			if (coinsMoverMsg.flag) /* Chequea si ha recibido mensaje */
+ 3392              		.loc 1 440 0
+ 3393 0c10 CC309FE5 		ldr	r3, .L91+8
+ 3394 0c14 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 3395 0c18 000053E3 		cmp	r3, #0
+ 3396 0c1c 2800000A 		beq	.L89
+ 441:../proyecto.c **** 			{
+ 442:../proyecto.c **** 				coinsMoverMsg.flag = FALSE; /* Marca el mensaje como leido */
+ 3397              		.loc 1 442 0
+ 3398 0c20 BC309FE5 		ldr	r3, .L91+8
+ 3399 0c24 0020A0E3 		mov	r2, #0
+ 3400 0c28 0020C3E5 		strb	r2, [r3, #0]
+ 443:../proyecto.c **** 				if (coinsMoverMsg.accept) /* Muestra el mensaje que corresponda en segs */
+ 3401              		.loc 1 443 0
+ 3402 0c2c B0309FE5 		ldr	r3, .L91+8
+ 3403 0c30 0130D3E5 		ldrb	r3, [r3, #1]	@ zero_extendqisi2
+ 3404 0c34 000053E3 		cmp	r3, #0
+ 3405 0c38 0200000A 		beq	.L86
+ 444:../proyecto.c **** 					segs_putchar(0xA);
+ 3406              		.loc 1 444 0
+ 3407 0c3c 0A00A0E3 		mov	r0, #10
+ 3408 0c40 FEFFFFEB 		bl	segs_putchar
+ 3409 0c44 010000EA 		b	.L87
+ 3410              	.L86:
+ 445:../proyecto.c **** 				else
+ 446:../proyecto.c **** 					segs_putchar(0xD);
+ 3411              		.loc 1 446 0
+ 3412 0c48 0D00A0E3 		mov	r0, #13
+ 3413 0c4c FEFFFFEB 		bl	segs_putchar
+ 3414              	.L87:
+ 447:../proyecto.c **** 				led_on(LEFT_LED); /* Enciende leds */
+ 3415              		.loc 1 447 0
+ 3416 0c50 0100A0E3 		mov	r0, #1
+ 3417 0c54 FEFFFFEB 		bl	led_on
+ 448:../proyecto.c **** 				led_on(RIGHT_LED);
+ 3418              		.loc 1 448 0
+ 3419 0c58 0200A0E3 		mov	r0, #2
+ 3420 0c5c FEFFFFEB 		bl	led_on
+ 449:../proyecto.c **** 				state = on; /* Salta al estado on ... */
+ 3421              		.loc 1 449 0
+ 3422 0c60 78309FE5 		ldr	r3, .L91+4
+ 3423 0c64 0120A0E3 		mov	r2, #1
+ 3424 0c68 0020C3E5 		strb	r2, [r3, #0]
+ 450:../proyecto.c **** 				ticks = 10; /* ... en el que debera permanecer 10 ticks */
+ 3425              		.loc 1 450 0
+ 3426 0c6c 74309FE5 		ldr	r3, .L91+12
+ 3427 0c70 0A20A0E3 		mov	r2, #10
+ 3428 0c74 002083E5 		str	r2, [r3, #0]
+ 451:../proyecto.c **** 			}
+ 452:../proyecto.c **** 			break;
+ 3429              		.loc 1 452 0
+ 3430 0c78 140000EA 		b	.L80
+ 3431              	.L84:
+ 453:../proyecto.c **** 		case on: /* Estado con leds y 7-segs encendidos */
+ 454:../proyecto.c **** 			if (!(--ticks)) /* Decrementa ticks y chequea si ha permanecido en este estado el tiempo requeri
+ 3432              		.loc 1 454 0
+ 3433 0c7c 64309FE5 		ldr	r3, .L91+12
+ 3434 0c80 003093E5 		ldr	r3, [r3, #0]
+ 3435 0c84 012043E2 		sub	r2, r3, #1
+ 3436 0c88 58309FE5 		ldr	r3, .L91+12
+ 3437 0c8c 002083E5 		str	r2, [r3, #0]
+ 3438 0c90 50309FE5 		ldr	r3, .L91+12
+ 3439 0c94 003093E5 		ldr	r3, [r3, #0]
+ 3440 0c98 000053E3 		cmp	r3, #0
+ 3441 0c9c 0A00001A 		bne	.L90
+ 455:../proyecto.c **** 			{
+ 456:../proyecto.c **** 				segs_off(); /* Apaga segs */
+ 3442              		.loc 1 456 0
+ 3443 0ca0 FEFFFFEB 		bl	segs_off
+ 457:../proyecto.c **** 				led_off(LEFT_LED); /* Apaga leds */
+ 3444              		.loc 1 457 0
+ 3445 0ca4 0100A0E3 		mov	r0, #1
+ 3446 0ca8 FEFFFFEB 		bl	led_off
+ 458:../proyecto.c **** 				led_off(RIGHT_LED);
+ 3447              		.loc 1 458 0
+ 3448 0cac 0200A0E3 		mov	r0, #2
+ 3449 0cb0 FEFFFFEB 		bl	led_off
+ 459:../proyecto.c **** 				state = off; /* Salta al estado off */
+ 3450              		.loc 1 459 0
+ 3451 0cb4 24309FE5 		ldr	r3, .L91+4
+ 3452 0cb8 0020A0E3 		mov	r2, #0
+ 3453 0cbc 0020C3E5 		strb	r2, [r3, #0]
+ 460:../proyecto.c **** 			}
+ 461:../proyecto.c **** 			break;
+ 3454              		.loc 1 461 0
+ 3455 0cc0 020000EA 		b	.L80
+ 3456              	.L89:
+ 452:../proyecto.c **** 			break;
+ 3457              		.loc 1 452 0
+ 3458 0cc4 0000A0E1 		mov	r0, r0	@ nop
+ 3459 0cc8 000000EA 		b	.L80
+ 3460              	.L90:
+ 3461              		.loc 1 461 0
+ 3462 0ccc 0000A0E1 		mov	r0, r0	@ nop
+ 3463              	.L80:
+ 462:../proyecto.c **** 		}
+ 463:../proyecto.c **** }
+ 3464              		.loc 1 463 0
+ 3465 0cd0 0CD04BE2 		sub	sp, fp, #12
+ 3466 0cd4 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 3467 0cd8 1EFF2FE1 		bx	lr
+ 3468              	.L92:
+ 3469              		.align	2
+ 3470              	.L91:
+ 3471 0cdc 00000000 		.word	init.4307
+ 3472 0ce0 07000000 		.word	state.4311
+ 3473 0ce4 00000000 		.word	coinsMoverMsg
+ 3474 0ce8 08000000 		.word	ticks.4312
+ 3475              		.cfi_endproc
+ 3476              	.LFE7:
+ 3478              		.align	2
+ 3479              		.global	setup
+ 3481              	setup:
+ 3482              	.LFB8:
+ 464:../proyecto.c **** 
+ 465:../proyecto.c **** /*******************************************************************/
+ 466:../proyecto.c **** 
+ 467:../proyecto.c **** /*
+ 468:../proyecto.c ****  ** Inicializa flags, mailboxes y variables globales
+ 469:../proyecto.c ****  */
+ 470:../proyecto.c **** void setup(void) {
+ 3483              		.loc 1 470 0
+ 3484              		.cfi_startproc
+ 3485              		@ Function supports interworking.
+ 3486              		@ args = 0, pretend = 0, frame = 8
+ 3487              		@ frame_needed = 1, uses_anonymous_args = 0
+ 3488 0cec 0DC0A0E1 		mov	ip, sp
+ 3489              	.LCFI16:
+ 3490              		.cfi_def_cfa_register 12
+ 3491 0cf0 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 3492 0cf4 04B04CE2 		sub	fp, ip, #4
+ 3493              		.cfi_offset 14, -8
+ 3494              		.cfi_offset 13, -12
+ 3495              		.cfi_offset 11, -16
+ 3496              	.LCFI17:
+ 3497              		.cfi_def_cfa 11, 4
+ 3498 0cf8 08D04DE2 		sub	sp, sp, #8
+ 471:../proyecto.c **** 	coinAcceptorMsg.flag = FALSE;
+ 3499              		.loc 1 471 0
+ 3500 0cfc B0309FE5 		ldr	r3, .L96
+ 3501 0d00 0020A0E3 		mov	r2, #0
+ 3502 0d04 0020C3E5 		strb	r2, [r3, #0]
+ 472:../proyecto.c **** 	coinAcceptorMsg.cents = 0;
+ 3503              		.loc 1 472 0
+ 3504 0d08 A4309FE5 		ldr	r3, .L96
+ 3505 0d0c 0020A0E3 		mov	r2, #0
+ 3506 0d10 0120C3E5 		strb	r2, [r3, #1]
+ 473:../proyecto.c **** 
+ 474:../proyecto.c **** 	tsPressedMsg.flag = FALSE;
+ 3507              		.loc 1 474 0
+ 3508 0d14 9C309FE5 		ldr	r3, .L96+4
+ 3509 0d18 0020A0E3 		mov	r2, #0
+ 3510 0d1c 0020C3E5 		strb	r2, [r3, #0]
+ 475:../proyecto.c **** 	tsPressedMsg.x = 0;
+ 3511              		.loc 1 475 0
+ 3512 0d20 90309FE5 		ldr	r3, .L96+4
+ 3513 0d24 0020A0E3 		mov	r2, #0
+ 3514 0d28 B220C3E1 		strh	r2, [r3, #2]	@ movhi
+ 476:../proyecto.c **** 	tsPressedMsg.y = 0;
+ 3515              		.loc 1 476 0
+ 3516 0d2c 84309FE5 		ldr	r3, .L96+4
+ 3517 0d30 0020A0E3 		mov	r2, #0
+ 3518 0d34 B420C3E1 		strh	r2, [r3, #4]	@ movhi
+ 477:../proyecto.c **** 
+ 478:../proyecto.c **** 	coinsMoverMsg.flag = FALSE;
+ 3519              		.loc 1 478 0
+ 3520 0d38 7C309FE5 		ldr	r3, .L96+8
+ 3521 0d3c 0020A0E3 		mov	r2, #0
+ 3522 0d40 0020C3E5 		strb	r2, [r3, #0]
+ 479:../proyecto.c **** 	coinsMoverMsg.accept = FALSE;
+ 3523              		.loc 1 479 0
+ 3524 0d44 70309FE5 		ldr	r3, .L96+8
+ 3525 0d48 0020A0E3 		mov	r2, #0
+ 3526 0d4c 0120C3E5 		strb	r2, [r3, #1]
+ 480:../proyecto.c **** 	parking.plazasLibres=MAXPLACES;
+ 3527              		.loc 1 480 0
+ 3528 0d50 68309FE5 		ldr	r3, .L96+12
+ 3529 0d54 0820A0E3 		mov	r2, #8
+ 3530 0d58 4320C3E5 		strb	r2, [r3, #67]
+ 481:../proyecto.c **** 	printTicketFlag = FALSE;
+ 3531              		.loc 1 481 0
+ 3532 0d5c 60309FE5 		ldr	r3, .L96+16
+ 3533 0d60 0020A0E3 		mov	r2, #0
+ 3534 0d64 0020C3E5 		strb	r2, [r3, #0]
+ 482:../proyecto.c **** 	uint8 i;
+ 483:../proyecto.c **** 	for (i = 0; i < MAXPLACES; i++) {
+ 3535              		.loc 1 483 0
+ 3536 0d68 0030A0E3 		mov	r3, #0
+ 3537 0d6c 0D304BE5 		strb	r3, [fp, #-13]
+ 3538 0d70 060000EA 		b	.L94
+ 3539              	.L95:
+ 484:../proyecto.c **** 
+ 485:../proyecto.c **** 		parking.plaza[i].occupied = FALSE; // Inicialmente todas las plazas están libres
+ 3540              		.loc 1 485 0 discriminator 2
+ 3541 0d74 0D205BE5 		ldrb	r2, [fp, #-13]	@ zero_extendqisi2
+ 3542 0d78 40309FE5 		ldr	r3, .L96+12
+ 3543 0d7c 0010A0E3 		mov	r1, #0
+ 3544 0d80 8211C3E7 		strb	r1, [r3, r2, asl #3]
+ 483:../proyecto.c **** 	for (i = 0; i < MAXPLACES; i++) {
+ 3545              		.loc 1 483 0 discriminator 2
+ 3546 0d84 0D305BE5 		ldrb	r3, [fp, #-13]
+ 3547 0d88 013083E2 		add	r3, r3, #1
+ 3548 0d8c 0D304BE5 		strb	r3, [fp, #-13]
+ 3549              	.L94:
+ 483:../proyecto.c **** 	for (i = 0; i < MAXPLACES; i++) {
+ 3550              		.loc 1 483 0 is_stmt 0 discriminator 1
+ 3551 0d90 0D305BE5 		ldrb	r3, [fp, #-13]	@ zero_extendqisi2
+ 3552 0d94 070053E3 		cmp	r3, #7
+ 3553 0d98 F5FFFF9A 		bls	.L95
+ 486:../proyecto.c **** 	}
+ 487:../proyecto.c **** 	parking.recaudacion = 0;
+ 3554              		.loc 1 487 0 is_stmt 1
+ 3555 0d9c 1C309FE5 		ldr	r3, .L96+12
+ 3556 0da0 0020A0E3 		mov	r2, #0
+ 3557 0da4 B024C3E1 		strh	r2, [r3, #64]	@ movhi
+ 488:../proyecto.c **** }
+ 3558              		.loc 1 488 0
+ 3559 0da8 0CD04BE2 		sub	sp, fp, #12
+ 3560 0dac 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 3561 0db0 1EFF2FE1 		bx	lr
+ 3562              	.L97:
+ 3563              		.align	2
+ 3564              	.L96:
+ 3565 0db4 00000000 		.word	coinAcceptorMsg
+ 3566 0db8 00000000 		.word	tsPressedMsg
+ 3567 0dbc 00000000 		.word	coinsMoverMsg
+ 3568 0dc0 00000000 		.word	parking
+ 3569 0dc4 00000000 		.word	printTicketFlag
+ 3570              		.cfi_endproc
+ 3571              	.LFE8:
+ 3573              		.section	.rodata
+ 3574              		.align	2
+ 3575              	.LC12:
+ 3576 00e8 50756C73 		.ascii	"Pulse la pantalla\000"
+ 3576      65206C61 
+ 3576      2070616E 
+ 3576      74616C6C 
+ 3576      6100
+ 3577 00fa 0000     		.align	2
+ 3578              	.LC13:
+ 3579 00fc 20207061 		.ascii	"  para comenzar  \000"
+ 3579      72612063 
+ 3579      6F6D656E 
+ 3579      7A617220 
+ 3579      2000
+ 3580 010e 0000     		.align	2
+ 3581              	.LC14:
+ 3582 0110 506C617A 		.ascii	"Plazas libres: \000"
+ 3582      6173206C 
+ 3582      69627265 
+ 3582      733A2000 
+ 3583              		.align	2
+ 3584              	.LC15:
+ 3585 0120 52656361 		.ascii	"Recaudacion: \000"
+ 3585      75646163 
+ 3585      696F6E3A 
+ 3585      2000
+ 3586 012e 0000     		.align	2
+ 3587              	.LC16:
+ 3588 0130 484F5241 		.ascii	"HORARIO DE FUNCIONAMIENTO:\000"
+ 3588      52494F20 
+ 3588      44452046 
+ 3588      554E4349 
+ 3588      4F4E414D 
+ 3589 014b 00       		.align	2
+ 3590              	.LC17:
+ 3591 014c 646F6D3A 		.ascii	"dom: gratis\000"
+ 3591      20677261 
+ 3591      74697300 
+ 3592              		.align	2
+ 3593              	.LC18:
+ 3594 0158 6C756E3A 		.ascii	"lun: 09:00-21:00\000"
+ 3594      2030393A 
+ 3594      30302D32 
+ 3594      313A3030 
+ 3594      00
+ 3595 0169 000000   		.align	2
+ 3596              	.LC19:
+ 3597 016c 6D61723A 		.ascii	"mar: 09:00-21:00\000"
+ 3597      2030393A 
+ 3597      30302D32 
+ 3597      313A3030 
+ 3597      00
+ 3598 017d 000000   		.align	2
+ 3599              	.LC20:
+ 3600 0180 6D69653A 		.ascii	"mie: 09:00-21:00\000"
+ 3600      2030393A 
+ 3600      30302D32 
+ 3600      313A3030 
+ 3600      00
+ 3601 0191 000000   		.align	2
+ 3602              	.LC21:
+ 3603 0194 6A75653A 		.ascii	"jue: 09:00-21:00\000"
+ 3603      2030393A 
+ 3603      30302D32 
+ 3603      313A3030 
+ 3603      00
+ 3604 01a5 000000   		.align	2
+ 3605              	.LC22:
+ 3606 01a8 7669653A 		.ascii	"vie: 09:00-21:00\000"
+ 3606      2030393A 
+ 3606      30302D32 
+ 3606      313A3030 
+ 3606      00
+ 3607 01b9 000000   		.align	2
+ 3608              	.LC23:
+ 3609 01bc 7361623A 		.ascii	"sab: 09:00-15:00\000"
+ 3609      2030393A 
+ 3609      30302D31 
+ 3609      353A3030 
+ 3609      00
+ 3610              		.text
+ 3611              		.align	2
+ 3612              		.global	plotWelcomeScreen
+ 3614              	plotWelcomeScreen:
+ 3615              	.LFB9:
+ 489:../proyecto.c **** 
+ 490:../proyecto.c **** void plotWelcomeScreen(void) {
+ 3616              		.loc 1 490 0
+ 3617              		.cfi_startproc
+ 3618              		@ Function supports interworking.
+ 3619              		@ args = 0, pretend = 0, frame = 8
+ 3620              		@ frame_needed = 1, uses_anonymous_args = 0
+ 3621 0dc8 0DC0A0E1 		mov	ip, sp
+ 3622              	.LCFI18:
+ 3623              		.cfi_def_cfa_register 12
+ 3624 0dcc 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 3625 0dd0 04B04CE2 		sub	fp, ip, #4
+ 3626              		.cfi_offset 14, -8
+ 3627              		.cfi_offset 13, -12
+ 3628              		.cfi_offset 11, -16
+ 3629              	.LCFI19:
+ 3630              		.cfi_def_cfa 11, 4
+ 3631 0dd4 10D04DE2 		sub	sp, sp, #16
+ 491:../proyecto.c **** 	const uint16 X_HORARIO = 10; // Posición inicial del horario de funcionamiento
+ 3632              		.loc 1 491 0
+ 3633 0dd8 0A30A0E3 		mov	r3, #10
+ 3634 0ddc BE304BE1 		strh	r3, [fp, #-14]	@ movhi
+ 492:../proyecto.c **** 	const uint16 Y_HORARIO = 120;
+ 3635              		.loc 1 492 0
+ 3636 0de0 7830A0E3 		mov	r3, #120
+ 3637 0de4 B0314BE1 		strh	r3, [fp, #-16]	@ movhi
+ 493:../proyecto.c **** 
+ 494:../proyecto.c **** //Limpiar la pantalla con el color de fondo:
+ 495:../proyecto.c **** 	lcd_clear();
+ 3638              		.loc 1 495 0
+ 3639 0de8 FEFFFFEB 		bl	lcd_clear
+ 496:../proyecto.c **** 	lcd_puts_x2(24, 40, BLACK, "Pulse la pantalla");
+ 3640              		.loc 1 496 0
+ 3641 0dec 1800A0E3 		mov	r0, #24
+ 3642 0df0 2810A0E3 		mov	r1, #40
+ 3643 0df4 0F20A0E3 		mov	r2, #15
+ 3644 0df8 00329FE5 		ldr	r3, .L99
+ 3645 0dfc FEFFFFEB 		bl	lcd_puts_x2
+ 497:../proyecto.c **** 	lcd_puts_x2(24, 68, BLACK, "  para comenzar  ");
+ 3646              		.loc 1 497 0
+ 3647 0e00 1800A0E3 		mov	r0, #24
+ 3648 0e04 4410A0E3 		mov	r1, #68
+ 3649 0e08 0F20A0E3 		mov	r2, #15
+ 3650 0e0c F0319FE5 		ldr	r3, .L99+4
+ 3651 0e10 FEFFFFEB 		bl	lcd_puts_x2
+ 498:../proyecto.c **** 
+ 499:../proyecto.c **** 	lcd_puts(24, 100, BLACK, "Plazas libres: ");
+ 3652              		.loc 1 499 0
+ 3653 0e14 1800A0E3 		mov	r0, #24
+ 3654 0e18 6410A0E3 		mov	r1, #100
+ 3655 0e1c 0F20A0E3 		mov	r2, #15
+ 3656 0e20 E0319FE5 		ldr	r3, .L99+8
+ 3657 0e24 FEFFFFEB 		bl	lcd_puts
+ 500:../proyecto.c **** 	lcd_putint(150, 100, BLACK, parking.plazasLibres);
+ 3658              		.loc 1 500 0
+ 3659 0e28 DC319FE5 		ldr	r3, .L99+12
+ 3660 0e2c 4330D3E5 		ldrb	r3, [r3, #67]	@ zero_extendqisi2
+ 3661 0e30 9600A0E3 		mov	r0, #150
+ 3662 0e34 6410A0E3 		mov	r1, #100
+ 3663 0e38 0F20A0E3 		mov	r2, #15
+ 3664 0e3c FEFFFFEB 		bl	lcd_putint
+ 501:../proyecto.c **** 	lcd_puts(170, 100, BLACK, "Recaudacion: ");
+ 3665              		.loc 1 501 0
+ 3666 0e40 AA00A0E3 		mov	r0, #170
+ 3667 0e44 6410A0E3 		mov	r1, #100
+ 3668 0e48 0F20A0E3 		mov	r2, #15
+ 3669 0e4c BC319FE5 		ldr	r3, .L99+16
+ 3670 0e50 FEFFFFEB 		bl	lcd_puts
+ 502:../proyecto.c **** 	lcd_putint(280, 100, BLACK, parking.recaudacion);
+ 3671              		.loc 1 502 0
+ 3672 0e54 B0319FE5 		ldr	r3, .L99+12
+ 3673 0e58 B034D3E1 		ldrh	r3, [r3, #64]
+ 3674 0e5c 460FA0E3 		mov	r0, #280
+ 3675 0e60 6410A0E3 		mov	r1, #100
+ 3676 0e64 0F20A0E3 		mov	r2, #15
+ 3677 0e68 FEFFFFEB 		bl	lcd_putint
+ 503:../proyecto.c **** 
+ 504:../proyecto.c **** // Dibujar el horario de funcionamiento
+ 505:../proyecto.c **** 	lcd_draw_box(0, 125, LCD_WIDTH - 1, 220, BLACK, 1); // Limpiar área donde se dibuja la fecha y hor
+ 3678              		.loc 1 505 0
+ 3679 0e6c 0F30A0E3 		mov	r3, #15
+ 3680 0e70 00308DE5 		str	r3, [sp, #0]
+ 3681 0e74 0130A0E3 		mov	r3, #1
+ 3682 0e78 04308DE5 		str	r3, [sp, #4]
+ 3683 0e7c 0000A0E3 		mov	r0, #0
+ 3684 0e80 7D10A0E3 		mov	r1, #125
+ 3685 0e84 88219FE5 		ldr	r2, .L99+20
+ 3686 0e88 DC30A0E3 		mov	r3, #220
+ 3687 0e8c FEFFFFEB 		bl	lcd_draw_box
+ 506:../proyecto.c **** 	lcd_puts(X_HORARIO + 30, Y_HORARIO, BLACK, "HORARIO DE FUNCIONAMIENTO:");
+ 3688              		.loc 1 506 0
+ 3689 0e90 BE305BE1 		ldrh	r3, [fp, #-14]	@ movhi
+ 3690 0e94 1E3083E2 		add	r3, r3, #30
+ 3691 0e98 0338A0E1 		mov	r3, r3, asl #16
+ 3692 0e9c 2328A0E1 		mov	r2, r3, lsr #16
+ 3693 0ea0 B0315BE1 		ldrh	r3, [fp, #-16]
+ 3694 0ea4 0200A0E1 		mov	r0, r2
+ 3695 0ea8 0310A0E1 		mov	r1, r3
+ 3696 0eac 0F20A0E3 		mov	r2, #15
+ 3697 0eb0 60319FE5 		ldr	r3, .L99+24
+ 3698 0eb4 FEFFFFEB 		bl	lcd_puts
+ 507:../proyecto.c **** 
+ 508:../proyecto.c **** 	lcd_puts(X_HORARIO, Y_HORARIO + 20, BLACK, "dom: gratis");
+ 3699              		.loc 1 508 0
+ 3700 0eb8 B0315BE1 		ldrh	r3, [fp, #-16]	@ movhi
+ 3701 0ebc 143083E2 		add	r3, r3, #20
+ 3702 0ec0 0338A0E1 		mov	r3, r3, asl #16
+ 3703 0ec4 2338A0E1 		mov	r3, r3, lsr #16
+ 3704 0ec8 BE205BE1 		ldrh	r2, [fp, #-14]
+ 3705 0ecc 0200A0E1 		mov	r0, r2
+ 3706 0ed0 0310A0E1 		mov	r1, r3
+ 3707 0ed4 0F20A0E3 		mov	r2, #15
+ 3708 0ed8 3C319FE5 		ldr	r3, .L99+28
+ 3709 0edc FEFFFFEB 		bl	lcd_puts
+ 509:../proyecto.c **** 	lcd_puts(X_HORARIO, Y_HORARIO + 40, BLACK, "lun: 09:00-21:00");
+ 3710              		.loc 1 509 0
+ 3711 0ee0 B0315BE1 		ldrh	r3, [fp, #-16]	@ movhi
+ 3712 0ee4 283083E2 		add	r3, r3, #40
+ 3713 0ee8 0338A0E1 		mov	r3, r3, asl #16
+ 3714 0eec 2338A0E1 		mov	r3, r3, lsr #16
+ 3715 0ef0 BE205BE1 		ldrh	r2, [fp, #-14]
+ 3716 0ef4 0200A0E1 		mov	r0, r2
+ 3717 0ef8 0310A0E1 		mov	r1, r3
+ 3718 0efc 0F20A0E3 		mov	r2, #15
+ 3719 0f00 18319FE5 		ldr	r3, .L99+32
+ 3720 0f04 FEFFFFEB 		bl	lcd_puts
+ 510:../proyecto.c **** 	lcd_puts(X_HORARIO, Y_HORARIO + 60, BLACK, "mar: 09:00-21:00");
+ 3721              		.loc 1 510 0
+ 3722 0f08 B0315BE1 		ldrh	r3, [fp, #-16]	@ movhi
+ 3723 0f0c 3C3083E2 		add	r3, r3, #60
+ 3724 0f10 0338A0E1 		mov	r3, r3, asl #16
+ 3725 0f14 2338A0E1 		mov	r3, r3, lsr #16
+ 3726 0f18 BE205BE1 		ldrh	r2, [fp, #-14]
+ 3727 0f1c 0200A0E1 		mov	r0, r2
+ 3728 0f20 0310A0E1 		mov	r1, r3
+ 3729 0f24 0F20A0E3 		mov	r2, #15
+ 3730 0f28 F4309FE5 		ldr	r3, .L99+36
+ 3731 0f2c FEFFFFEB 		bl	lcd_puts
+ 511:../proyecto.c **** 	lcd_puts(X_HORARIO, Y_HORARIO + 80, BLACK, "mie: 09:00-21:00");
+ 3732              		.loc 1 511 0
+ 3733 0f30 B0315BE1 		ldrh	r3, [fp, #-16]	@ movhi
+ 3734 0f34 503083E2 		add	r3, r3, #80
+ 3735 0f38 0338A0E1 		mov	r3, r3, asl #16
+ 3736 0f3c 2338A0E1 		mov	r3, r3, lsr #16
+ 3737 0f40 BE205BE1 		ldrh	r2, [fp, #-14]
+ 3738 0f44 0200A0E1 		mov	r0, r2
+ 3739 0f48 0310A0E1 		mov	r1, r3
+ 3740 0f4c 0F20A0E3 		mov	r2, #15
+ 3741 0f50 D0309FE5 		ldr	r3, .L99+40
+ 3742 0f54 FEFFFFEB 		bl	lcd_puts
+ 512:../proyecto.c **** 	lcd_puts(X_HORARIO + 140, Y_HORARIO + 20, BLACK, "jue: 09:00-21:00");
+ 3743              		.loc 1 512 0
+ 3744 0f58 BE305BE1 		ldrh	r3, [fp, #-14]	@ movhi
+ 3745 0f5c 8C3083E2 		add	r3, r3, #140
+ 3746 0f60 0338A0E1 		mov	r3, r3, asl #16
+ 3747 0f64 2328A0E1 		mov	r2, r3, lsr #16
+ 3748 0f68 B0315BE1 		ldrh	r3, [fp, #-16]	@ movhi
+ 3749 0f6c 143083E2 		add	r3, r3, #20
+ 3750 0f70 0338A0E1 		mov	r3, r3, asl #16
+ 3751 0f74 2338A0E1 		mov	r3, r3, lsr #16
+ 3752 0f78 0200A0E1 		mov	r0, r2
+ 3753 0f7c 0310A0E1 		mov	r1, r3
+ 3754 0f80 0F20A0E3 		mov	r2, #15
+ 3755 0f84 A0309FE5 		ldr	r3, .L99+44
+ 3756 0f88 FEFFFFEB 		bl	lcd_puts
+ 513:../proyecto.c **** 	lcd_puts(X_HORARIO + 140, Y_HORARIO + 40, BLACK, "vie: 09:00-21:00");
+ 3757              		.loc 1 513 0
+ 3758 0f8c BE305BE1 		ldrh	r3, [fp, #-14]	@ movhi
+ 3759 0f90 8C3083E2 		add	r3, r3, #140
+ 3760 0f94 0338A0E1 		mov	r3, r3, asl #16
+ 3761 0f98 2328A0E1 		mov	r2, r3, lsr #16
+ 3762 0f9c B0315BE1 		ldrh	r3, [fp, #-16]	@ movhi
+ 3763 0fa0 283083E2 		add	r3, r3, #40
+ 3764 0fa4 0338A0E1 		mov	r3, r3, asl #16
+ 3765 0fa8 2338A0E1 		mov	r3, r3, lsr #16
+ 3766 0fac 0200A0E1 		mov	r0, r2
+ 3767 0fb0 0310A0E1 		mov	r1, r3
+ 3768 0fb4 0F20A0E3 		mov	r2, #15
+ 3769 0fb8 70309FE5 		ldr	r3, .L99+48
+ 3770 0fbc FEFFFFEB 		bl	lcd_puts
+ 514:../proyecto.c **** 	lcd_puts(X_HORARIO + 140, Y_HORARIO + 60, BLACK, "sab: 09:00-15:00");
+ 3771              		.loc 1 514 0
+ 3772 0fc0 BE305BE1 		ldrh	r3, [fp, #-14]	@ movhi
+ 3773 0fc4 8C3083E2 		add	r3, r3, #140
+ 3774 0fc8 0338A0E1 		mov	r3, r3, asl #16
+ 3775 0fcc 2328A0E1 		mov	r2, r3, lsr #16
+ 3776 0fd0 B0315BE1 		ldrh	r3, [fp, #-16]	@ movhi
+ 3777 0fd4 3C3083E2 		add	r3, r3, #60
+ 3778 0fd8 0338A0E1 		mov	r3, r3, asl #16
+ 3779 0fdc 2338A0E1 		mov	r3, r3, lsr #16
+ 3780 0fe0 0200A0E1 		mov	r0, r2
+ 3781 0fe4 0310A0E1 		mov	r1, r3
+ 3782 0fe8 0F20A0E3 		mov	r2, #15
+ 3783 0fec 40309FE5 		ldr	r3, .L99+52
+ 3784 0ff0 FEFFFFEB 		bl	lcd_puts
+ 515:../proyecto.c **** 
+ 516:../proyecto.c **** }
+ 3785              		.loc 1 516 0
+ 3786 0ff4 0CD04BE2 		sub	sp, fp, #12
+ 3787 0ff8 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 3788 0ffc 1EFF2FE1 		bx	lr
+ 3789              	.L100:
+ 3790              		.align	2
+ 3791              	.L99:
+ 3792 1000 E8000000 		.word	.LC12
+ 3793 1004 FC000000 		.word	.LC13
+ 3794 1008 10010000 		.word	.LC14
+ 3795 100c 00000000 		.word	parking
+ 3796 1010 20010000 		.word	.LC15
+ 3797 1014 3F010000 		.word	319
+ 3798 1018 30010000 		.word	.LC16
+ 3799 101c 4C010000 		.word	.LC17
+ 3800 1020 58010000 		.word	.LC18
+ 3801 1024 6C010000 		.word	.LC19
+ 3802 1028 80010000 		.word	.LC20
+ 3803 102c 94010000 		.word	.LC21
+ 3804 1030 A8010000 		.word	.LC22
+ 3805 1034 BC010000 		.word	.LC23
+ 3806              		.cfi_endproc
+ 3807              	.LFE9:
+ 3809              		.section	.rodata
+ 3810 01cd 000000   		.align	2
+ 3811              	.LC24:
+ 3812 01d0 646F6D00 		.ascii	"dom\000"
+ 3813              		.align	2
+ 3814              	.LC25:
+ 3815 01d4 6C756E00 		.ascii	"lun\000"
+ 3816              		.align	2
+ 3817              	.LC26:
+ 3818 01d8 6D617200 		.ascii	"mar\000"
+ 3819              		.align	2
+ 3820              	.LC27:
+ 3821 01dc 6D696500 		.ascii	"mie\000"
+ 3822              		.align	2
+ 3823              	.LC28:
+ 3824 01e0 6A756500 		.ascii	"jue\000"
+ 3825              		.align	2
+ 3826              	.LC29:
+ 3827 01e4 76696500 		.ascii	"vie\000"
+ 3828              		.align	2
+ 3829              	.LC30:
+ 3830 01e8 73616200 		.ascii	"sab\000"
+ 3831              		.align	2
+ 3832              	.LC31:
+ 3833 01ec 3F3F3F00 		.ascii	"???\000"
+ 3834              		.text
+ 3835              		.align	2
+ 3836              		.global	obtenerDiaSemana
+ 3838              	obtenerDiaSemana:
+ 3839              	.LFB10:
+ 517:../proyecto.c **** 
+ 518:../proyecto.c **** // Función auxiliar para obtener el día de la semana en texto
+ 519:../proyecto.c **** const char* obtenerDiaSemana(uint8 weekday) {
+ 3840              		.loc 1 519 0
+ 3841              		.cfi_startproc
+ 3842              		@ Function supports interworking.
+ 3843              		@ args = 0, pretend = 0, frame = 8
+ 3844              		@ frame_needed = 1, uses_anonymous_args = 0
+ 3845 1038 0DC0A0E1 		mov	ip, sp
+ 3846              	.LCFI20:
+ 3847              		.cfi_def_cfa_register 12
+ 3848 103c 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 3849 1040 04B04CE2 		sub	fp, ip, #4
+ 3850              		.cfi_offset 14, -8
+ 3851              		.cfi_offset 13, -12
+ 3852              		.cfi_offset 11, -16
+ 3853              	.LCFI21:
+ 3854              		.cfi_def_cfa 11, 4
+ 3855 1044 08D04DE2 		sub	sp, sp, #8
+ 3856 1048 0030A0E1 		mov	r3, r0
+ 3857 104c 0D304BE5 		strb	r3, [fp, #-13]
+ 520:../proyecto.c **** 	switch (weekday) {
+ 3858              		.loc 1 520 0
+ 3859 1050 0D305BE5 		ldrb	r3, [fp, #-13]	@ zero_extendqisi2
+ 3860 1054 060053E3 		cmp	r3, #6
+ 3861 1058 03F19F97 		ldrls	pc, [pc, r3, asl #2]
+ 3862 105c 140000EA 		b	.L102
+ 3863              	.L110:
+ 3864 1060 7C100000 		.word	.L103
+ 3865 1064 84100000 		.word	.L104
+ 3866 1068 8C100000 		.word	.L105
+ 3867 106c 94100000 		.word	.L106
+ 3868 1070 9C100000 		.word	.L107
+ 3869 1074 A4100000 		.word	.L108
+ 3870 1078 AC100000 		.word	.L109
+ 3871              	.L103:
+ 521:../proyecto.c **** 	case 0:
+ 522:../proyecto.c **** 		return "dom";
+ 3872              		.loc 1 522 0
+ 3873 107c 44309FE5 		ldr	r3, .L112
+ 3874 1080 0C0000EA 		b	.L111
+ 3875              	.L104:
+ 523:../proyecto.c **** 	case 1:
+ 524:../proyecto.c **** 		return "lun";
+ 3876              		.loc 1 524 0
+ 3877 1084 40309FE5 		ldr	r3, .L112+4
+ 3878 1088 0A0000EA 		b	.L111
+ 3879              	.L105:
+ 525:../proyecto.c **** 	case 2:
+ 526:../proyecto.c **** 		return "mar";
+ 3880              		.loc 1 526 0
+ 3881 108c 3C309FE5 		ldr	r3, .L112+8
+ 3882 1090 080000EA 		b	.L111
+ 3883              	.L106:
+ 527:../proyecto.c **** 	case 3:
+ 528:../proyecto.c **** 		return "mie";
+ 3884              		.loc 1 528 0
+ 3885 1094 38309FE5 		ldr	r3, .L112+12
+ 3886 1098 060000EA 		b	.L111
+ 3887              	.L107:
+ 529:../proyecto.c **** 	case 4:
+ 530:../proyecto.c **** 		return "jue";
+ 3888              		.loc 1 530 0
+ 3889 109c 34309FE5 		ldr	r3, .L112+16
+ 3890 10a0 040000EA 		b	.L111
+ 3891              	.L108:
+ 531:../proyecto.c **** 	case 5:
+ 532:../proyecto.c **** 		return "vie";
+ 3892              		.loc 1 532 0
+ 3893 10a4 30309FE5 		ldr	r3, .L112+20
+ 3894 10a8 020000EA 		b	.L111
+ 3895              	.L109:
+ 533:../proyecto.c **** 	case 6:
+ 534:../proyecto.c **** 		return "sab";
+ 3896              		.loc 1 534 0
+ 3897 10ac 2C309FE5 		ldr	r3, .L112+24
+ 3898 10b0 000000EA 		b	.L111
+ 3899              	.L102:
+ 535:../proyecto.c **** 	default:
+ 536:../proyecto.c **** 		return "???";
+ 3900              		.loc 1 536 0
+ 3901 10b4 28309FE5 		ldr	r3, .L112+28
+ 3902              	.L111:
+ 537:../proyecto.c **** 	}
+ 538:../proyecto.c **** }
+ 3903              		.loc 1 538 0
+ 3904 10b8 0300A0E1 		mov	r0, r3
+ 3905 10bc 0CD04BE2 		sub	sp, fp, #12
+ 3906 10c0 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 3907 10c4 1EFF2FE1 		bx	lr
+ 3908              	.L113:
+ 3909              		.align	2
+ 3910              	.L112:
+ 3911 10c8 D0010000 		.word	.LC24
+ 3912 10cc D4010000 		.word	.LC25
+ 3913 10d0 D8010000 		.word	.LC26
+ 3914 10d4 DC010000 		.word	.LC27
+ 3915 10d8 E0010000 		.word	.LC28
+ 3916 10dc E4010000 		.word	.LC29
+ 3917 10e0 E8010000 		.word	.LC30
+ 3918 10e4 EC010000 		.word	.LC31
+ 3919              		.cfi_endproc
+ 3920              	.LFE10:
+ 3922              		.align	2
+ 3923              		.global	convertirFechaHora
+ 3925              	convertirFechaHora:
+ 3926              	.LFB11:
+ 539:../proyecto.c **** 
+ 540:../proyecto.c **** void convertirFechaHora(rtc_time_t tiempoActual, char* buffer, char* diaSemana) {
+ 3927              		.loc 1 540 0
+ 3928              		.cfi_startproc
+ 3929              		@ Function supports interworking.
+ 3930              		@ args = 0, pretend = 0, frame = 32
+ 3931              		@ frame_needed = 1, uses_anonymous_args = 0
+ 3932 10e8 0DC0A0E1 		mov	ip, sp
+ 3933              	.LCFI22:
+ 3934              		.cfi_def_cfa_register 12
+ 3935 10ec 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 3936 10f0 04B04CE2 		sub	fp, ip, #4
+ 3937              		.cfi_offset 14, -8
+ 3938              		.cfi_offset 13, -12
+ 3939              		.cfi_offset 11, -16
+ 3940              	.LCFI23:
+ 3941              		.cfi_def_cfa 11, 4
+ 3942 10f4 20D04DE2 		sub	sp, sp, #32
+ 3943 10f8 24C04BE2 		sub	ip, fp, #36
+ 3944 10fc 03008CE8 		stmia	ip, {r0, r1}
+ 3945 1100 28200BE5 		str	r2, [fp, #-40]
+ 3946 1104 2C300BE5 		str	r3, [fp, #-44]
+ 541:../proyecto.c **** // Obtener el nombre del día de la semana y almacenarlo en diaSemana
+ 542:../proyecto.c **** 	const char* nombreDia = obtenerDiaSemana(tiempoActual.wday);
+ 3947              		.loc 1 542 0
+ 3948 1108 20305BE5 		ldrb	r3, [fp, #-32]	@ zero_extendqisi2
+ 3949 110c 0300A0E1 		mov	r0, r3
+ 3950 1110 FEFFFFEB 		bl	obtenerDiaSemana
+ 3951 1114 10000BE5 		str	r0, [fp, #-16]
+ 543:../proyecto.c **** 	int i = 0;
+ 3952              		.loc 1 543 0
+ 3953 1118 0030A0E3 		mov	r3, #0
+ 3954 111c 14300BE5 		str	r3, [fp, #-20]
+ 544:../proyecto.c **** 
+ 545:../proyecto.c **** // Copiar el nombre del día al buffer diaSemana
+ 546:../proyecto.c **** 	while (*nombreDia) {
+ 3955              		.loc 1 546 0
+ 3956 1120 0B0000EA 		b	.L115
+ 3957              	.L116:
+ 547:../proyecto.c **** 		diaSemana[i++] = *nombreDia++;
+ 3958              		.loc 1 547 0
+ 3959 1124 14301BE5 		ldr	r3, [fp, #-20]
+ 3960 1128 2C201BE5 		ldr	r2, [fp, #-44]
+ 3961 112c 033082E0 		add	r3, r2, r3
+ 3962 1130 10201BE5 		ldr	r2, [fp, #-16]
+ 3963 1134 0020D2E5 		ldrb	r2, [r2, #0]	@ zero_extendqisi2
+ 3964 1138 0020C3E5 		strb	r2, [r3, #0]
+ 3965 113c 14301BE5 		ldr	r3, [fp, #-20]
+ 3966 1140 013083E2 		add	r3, r3, #1
+ 3967 1144 14300BE5 		str	r3, [fp, #-20]
+ 3968 1148 10301BE5 		ldr	r3, [fp, #-16]
+ 3969 114c 013083E2 		add	r3, r3, #1
+ 3970 1150 10300BE5 		str	r3, [fp, #-16]
+ 3971              	.L115:
+ 546:../proyecto.c **** 	while (*nombreDia) {
+ 3972              		.loc 1 546 0 discriminator 1
+ 3973 1154 10301BE5 		ldr	r3, [fp, #-16]
+ 3974 1158 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 3975 115c 000053E3 		cmp	r3, #0
+ 3976 1160 EFFFFF1A 		bne	.L116
+ 548:../proyecto.c **** 	}
+ 549:../proyecto.c **** 	diaSemana[i] = '\0';  // Terminar la cadena
+ 3977              		.loc 1 549 0
+ 3978 1164 14301BE5 		ldr	r3, [fp, #-20]
+ 3979 1168 2C201BE5 		ldr	r2, [fp, #-44]
+ 3980 116c 033082E0 		add	r3, r2, r3
+ 3981 1170 0020A0E3 		mov	r2, #0
+ 3982 1174 0020C3E5 		strb	r2, [r3, #0]
+ 550:../proyecto.c **** 
+ 551:../proyecto.c **** // Construir la cadena de fecha y hora
+ 552:../proyecto.c **** // Formato: "Día, dd/mm/aa hh:mm:ss"
+ 553:../proyecto.c **** 	int pos = 0;
+ 3983              		.loc 1 553 0
+ 3984 1178 0030A0E3 		mov	r3, #0
+ 3985 117c 18300BE5 		str	r3, [fp, #-24]
+ 554:../proyecto.c **** 
+ 555:../proyecto.c **** // Día de la semana
+ 556:../proyecto.c **** 	i = 0;
+ 3986              		.loc 1 556 0
+ 3987 1180 0030A0E3 		mov	r3, #0
+ 3988 1184 14300BE5 		str	r3, [fp, #-20]
+ 557:../proyecto.c **** 	while (diaSemana[i]) {
+ 3989              		.loc 1 557 0
+ 3990 1188 0D0000EA 		b	.L117
+ 3991              	.L118:
+ 558:../proyecto.c **** 		buffer[pos++] = diaSemana[i++];
+ 3992              		.loc 1 558 0
+ 3993 118c 18301BE5 		ldr	r3, [fp, #-24]
+ 3994 1190 28201BE5 		ldr	r2, [fp, #-40]
+ 3995 1194 033082E0 		add	r3, r2, r3
+ 3996 1198 14201BE5 		ldr	r2, [fp, #-20]
+ 3997 119c 2C101BE5 		ldr	r1, [fp, #-44]
+ 3998 11a0 022081E0 		add	r2, r1, r2
+ 3999 11a4 0020D2E5 		ldrb	r2, [r2, #0]	@ zero_extendqisi2
+ 4000 11a8 0020C3E5 		strb	r2, [r3, #0]
+ 4001 11ac 18301BE5 		ldr	r3, [fp, #-24]
+ 4002 11b0 013083E2 		add	r3, r3, #1
+ 4003 11b4 18300BE5 		str	r3, [fp, #-24]
+ 4004 11b8 14301BE5 		ldr	r3, [fp, #-20]
+ 4005 11bc 013083E2 		add	r3, r3, #1
+ 4006 11c0 14300BE5 		str	r3, [fp, #-20]
+ 4007              	.L117:
+ 557:../proyecto.c **** 	while (diaSemana[i]) {
+ 4008              		.loc 1 557 0 discriminator 1
+ 4009 11c4 14301BE5 		ldr	r3, [fp, #-20]
+ 4010 11c8 2C201BE5 		ldr	r2, [fp, #-44]
+ 4011 11cc 033082E0 		add	r3, r2, r3
+ 4012 11d0 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 4013 11d4 000053E3 		cmp	r3, #0
+ 4014 11d8 EBFFFF1A 		bne	.L118
+ 559:../proyecto.c **** 	}
+ 560:../proyecto.c **** 	buffer[pos++] = ',';
+ 4015              		.loc 1 560 0
+ 4016 11dc 18301BE5 		ldr	r3, [fp, #-24]
+ 4017 11e0 28201BE5 		ldr	r2, [fp, #-40]
+ 4018 11e4 033082E0 		add	r3, r2, r3
+ 4019 11e8 2C20A0E3 		mov	r2, #44
+ 4020 11ec 0020C3E5 		strb	r2, [r3, #0]
+ 4021 11f0 18301BE5 		ldr	r3, [fp, #-24]
+ 4022 11f4 013083E2 		add	r3, r3, #1
+ 4023 11f8 18300BE5 		str	r3, [fp, #-24]
+ 561:../proyecto.c **** 	buffer[pos++] = ' ';
+ 4024              		.loc 1 561 0
+ 4025 11fc 18301BE5 		ldr	r3, [fp, #-24]
+ 4026 1200 28201BE5 		ldr	r2, [fp, #-40]
+ 4027 1204 033082E0 		add	r3, r2, r3
+ 4028 1208 2020A0E3 		mov	r2, #32
+ 4029 120c 0020C3E5 		strb	r2, [r3, #0]
+ 4030 1210 18301BE5 		ldr	r3, [fp, #-24]
+ 4031 1214 013083E2 		add	r3, r3, #1
+ 4032 1218 18300BE5 		str	r3, [fp, #-24]
+ 562:../proyecto.c **** 
+ 563:../proyecto.c **** // Día
+ 564:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.mday / 10); // Primer dígito del día
+ 4033              		.loc 1 564 0
+ 4034 121c 18301BE5 		ldr	r3, [fp, #-24]
+ 4035 1220 28201BE5 		ldr	r2, [fp, #-40]
+ 4036 1224 033082E0 		add	r3, r2, r3
+ 4037 1228 21105BE5 		ldrb	r1, [fp, #-33]	@ zero_extendqisi2
+ 4038 122c 18249FE5 		ldr	r2, .L119
+ 4039 1230 910282E0 		umull	r0, r2, r1, r2
+ 4040 1234 A221A0E1 		mov	r2, r2, lsr #3
+ 4041 1238 FF2002E2 		and	r2, r2, #255
+ 4042 123c 302082E2 		add	r2, r2, #48
+ 4043 1240 FF2002E2 		and	r2, r2, #255
+ 4044 1244 0020C3E5 		strb	r2, [r3, #0]
+ 4045 1248 18301BE5 		ldr	r3, [fp, #-24]
+ 4046 124c 013083E2 		add	r3, r3, #1
+ 4047 1250 18300BE5 		str	r3, [fp, #-24]
+ 565:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.mday % 10); // Segundo dígito del día
+ 4048              		.loc 1 565 0
+ 4049 1254 18301BE5 		ldr	r3, [fp, #-24]
+ 4050 1258 28201BE5 		ldr	r2, [fp, #-40]
+ 4051 125c 030082E0 		add	r0, r2, r3
+ 4052 1260 21205BE5 		ldrb	r2, [fp, #-33]	@ zero_extendqisi2
+ 4053 1264 E0339FE5 		ldr	r3, .L119
+ 4054 1268 921383E0 		umull	r1, r3, r2, r3
+ 4055 126c A311A0E1 		mov	r1, r3, lsr #3
+ 4056 1270 0130A0E1 		mov	r3, r1
+ 4057 1274 0331A0E1 		mov	r3, r3, asl #2
+ 4058 1278 013083E0 		add	r3, r3, r1
+ 4059 127c 8330A0E1 		mov	r3, r3, asl #1
+ 4060 1280 023063E0 		rsb	r3, r3, r2
+ 4061 1284 FF3003E2 		and	r3, r3, #255
+ 4062 1288 303083E2 		add	r3, r3, #48
+ 4063 128c FF3003E2 		and	r3, r3, #255
+ 4064 1290 0030C0E5 		strb	r3, [r0, #0]
+ 4065 1294 18301BE5 		ldr	r3, [fp, #-24]
+ 4066 1298 013083E2 		add	r3, r3, #1
+ 4067 129c 18300BE5 		str	r3, [fp, #-24]
+ 566:../proyecto.c **** 	buffer[pos++] = '/';
+ 4068              		.loc 1 566 0
+ 4069 12a0 18301BE5 		ldr	r3, [fp, #-24]
+ 4070 12a4 28201BE5 		ldr	r2, [fp, #-40]
+ 4071 12a8 033082E0 		add	r3, r2, r3
+ 4072 12ac 2F20A0E3 		mov	r2, #47
+ 4073 12b0 0020C3E5 		strb	r2, [r3, #0]
+ 4074 12b4 18301BE5 		ldr	r3, [fp, #-24]
+ 4075 12b8 013083E2 		add	r3, r3, #1
+ 4076 12bc 18300BE5 		str	r3, [fp, #-24]
+ 567:../proyecto.c **** 
+ 568:../proyecto.c **** // Mes
+ 569:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.mon / 10);  // Primer dígito del mes
+ 4077              		.loc 1 569 0
+ 4078 12c0 18301BE5 		ldr	r3, [fp, #-24]
+ 4079 12c4 28201BE5 		ldr	r2, [fp, #-40]
+ 4080 12c8 033082E0 		add	r3, r2, r3
+ 4081 12cc 1F105BE5 		ldrb	r1, [fp, #-31]	@ zero_extendqisi2
+ 4082 12d0 74239FE5 		ldr	r2, .L119
+ 4083 12d4 910282E0 		umull	r0, r2, r1, r2
+ 4084 12d8 A221A0E1 		mov	r2, r2, lsr #3
+ 4085 12dc FF2002E2 		and	r2, r2, #255
+ 4086 12e0 302082E2 		add	r2, r2, #48
+ 4087 12e4 FF2002E2 		and	r2, r2, #255
+ 4088 12e8 0020C3E5 		strb	r2, [r3, #0]
+ 4089 12ec 18301BE5 		ldr	r3, [fp, #-24]
+ 4090 12f0 013083E2 		add	r3, r3, #1
+ 4091 12f4 18300BE5 		str	r3, [fp, #-24]
+ 570:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.mon % 10); // Segundo dígito del mes
+ 4092              		.loc 1 570 0
+ 4093 12f8 18301BE5 		ldr	r3, [fp, #-24]
+ 4094 12fc 28201BE5 		ldr	r2, [fp, #-40]
+ 4095 1300 030082E0 		add	r0, r2, r3
+ 4096 1304 1F205BE5 		ldrb	r2, [fp, #-31]	@ zero_extendqisi2
+ 4097 1308 3C339FE5 		ldr	r3, .L119
+ 4098 130c 921383E0 		umull	r1, r3, r2, r3
+ 4099 1310 A311A0E1 		mov	r1, r3, lsr #3
+ 4100 1314 0130A0E1 		mov	r3, r1
+ 4101 1318 0331A0E1 		mov	r3, r3, asl #2
+ 4102 131c 013083E0 		add	r3, r3, r1
+ 4103 1320 8330A0E1 		mov	r3, r3, asl #1
+ 4104 1324 023063E0 		rsb	r3, r3, r2
+ 4105 1328 FF3003E2 		and	r3, r3, #255
+ 4106 132c 303083E2 		add	r3, r3, #48
+ 4107 1330 FF3003E2 		and	r3, r3, #255
+ 4108 1334 0030C0E5 		strb	r3, [r0, #0]
+ 4109 1338 18301BE5 		ldr	r3, [fp, #-24]
+ 4110 133c 013083E2 		add	r3, r3, #1
+ 4111 1340 18300BE5 		str	r3, [fp, #-24]
+ 571:../proyecto.c **** 	buffer[pos++] = '/';
+ 4112              		.loc 1 571 0
+ 4113 1344 18301BE5 		ldr	r3, [fp, #-24]
+ 4114 1348 28201BE5 		ldr	r2, [fp, #-40]
+ 4115 134c 033082E0 		add	r3, r2, r3
+ 4116 1350 2F20A0E3 		mov	r2, #47
+ 4117 1354 0020C3E5 		strb	r2, [r3, #0]
+ 4118 1358 18301BE5 		ldr	r3, [fp, #-24]
+ 4119 135c 013083E2 		add	r3, r3, #1
+ 4120 1360 18300BE5 		str	r3, [fp, #-24]
+ 572:../proyecto.c **** 
+ 573:../proyecto.c **** // Año (últimos dos dígitos)
+ 574:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.year % 100) / 10; // Primer dígito del año
+ 4121              		.loc 1 574 0
+ 4122 1364 18301BE5 		ldr	r3, [fp, #-24]
+ 4123 1368 28201BE5 		ldr	r2, [fp, #-40]
+ 4124 136c 030082E0 		add	r0, r2, r3
+ 4125 1370 1E205BE5 		ldrb	r2, [fp, #-30]	@ zero_extendqisi2
+ 4126 1374 D4329FE5 		ldr	r3, .L119+4
+ 4127 1378 921383E0 		umull	r1, r3, r2, r3
+ 4128 137c A312A0E1 		mov	r1, r3, lsr #5
+ 4129 1380 0130A0E1 		mov	r3, r1
+ 4130 1384 0331A0E1 		mov	r3, r3, asl #2
+ 4131 1388 013083E0 		add	r3, r3, r1
+ 4132 138c 0311A0E1 		mov	r1, r3, asl #2
+ 4133 1390 013083E0 		add	r3, r3, r1
+ 4134 1394 0331A0E1 		mov	r3, r3, asl #2
+ 4135 1398 023063E0 		rsb	r3, r3, r2
+ 4136 139c FF2003E2 		and	r2, r3, #255
+ 4137 13a0 A4329FE5 		ldr	r3, .L119
+ 4138 13a4 921383E0 		umull	r1, r3, r2, r3
+ 4139 13a8 A331A0E1 		mov	r3, r3, lsr #3
+ 4140 13ac FF3003E2 		and	r3, r3, #255
+ 4141 13b0 303083E2 		add	r3, r3, #48
+ 4142 13b4 FF3003E2 		and	r3, r3, #255
+ 4143 13b8 0030C0E5 		strb	r3, [r0, #0]
+ 4144 13bc 18301BE5 		ldr	r3, [fp, #-24]
+ 4145 13c0 013083E2 		add	r3, r3, #1
+ 4146 13c4 18300BE5 		str	r3, [fp, #-24]
+ 575:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.year % 100) % 10; // Segundo dígito del año
+ 4147              		.loc 1 575 0
+ 4148 13c8 18301BE5 		ldr	r3, [fp, #-24]
+ 4149 13cc 28201BE5 		ldr	r2, [fp, #-40]
+ 4150 13d0 030082E0 		add	r0, r2, r3
+ 4151 13d4 1E205BE5 		ldrb	r2, [fp, #-30]	@ zero_extendqisi2
+ 4152 13d8 70329FE5 		ldr	r3, .L119+4
+ 4153 13dc 921383E0 		umull	r1, r3, r2, r3
+ 4154 13e0 A312A0E1 		mov	r1, r3, lsr #5
+ 4155 13e4 0130A0E1 		mov	r3, r1
+ 4156 13e8 0331A0E1 		mov	r3, r3, asl #2
+ 4157 13ec 013083E0 		add	r3, r3, r1
+ 4158 13f0 0311A0E1 		mov	r1, r3, asl #2
+ 4159 13f4 013083E0 		add	r3, r3, r1
+ 4160 13f8 0331A0E1 		mov	r3, r3, asl #2
+ 4161 13fc 023063E0 		rsb	r3, r3, r2
+ 4162 1400 FF2003E2 		and	r2, r3, #255
+ 4163 1404 40329FE5 		ldr	r3, .L119
+ 4164 1408 921383E0 		umull	r1, r3, r2, r3
+ 4165 140c A311A0E1 		mov	r1, r3, lsr #3
+ 4166 1410 0130A0E1 		mov	r3, r1
+ 4167 1414 0331A0E1 		mov	r3, r3, asl #2
+ 4168 1418 013083E0 		add	r3, r3, r1
+ 4169 141c 8330A0E1 		mov	r3, r3, asl #1
+ 4170 1420 023063E0 		rsb	r3, r3, r2
+ 4171 1424 FF3003E2 		and	r3, r3, #255
+ 4172 1428 303083E2 		add	r3, r3, #48
+ 4173 142c FF3003E2 		and	r3, r3, #255
+ 4174 1430 0030C0E5 		strb	r3, [r0, #0]
+ 4175 1434 18301BE5 		ldr	r3, [fp, #-24]
+ 4176 1438 013083E2 		add	r3, r3, #1
+ 4177 143c 18300BE5 		str	r3, [fp, #-24]
+ 576:../proyecto.c **** 	buffer[pos++] = ' ';
+ 4178              		.loc 1 576 0
+ 4179 1440 18301BE5 		ldr	r3, [fp, #-24]
+ 4180 1444 28201BE5 		ldr	r2, [fp, #-40]
+ 4181 1448 033082E0 		add	r3, r2, r3
+ 4182 144c 2020A0E3 		mov	r2, #32
+ 4183 1450 0020C3E5 		strb	r2, [r3, #0]
+ 4184 1454 18301BE5 		ldr	r3, [fp, #-24]
+ 4185 1458 013083E2 		add	r3, r3, #1
+ 4186 145c 18300BE5 		str	r3, [fp, #-24]
+ 577:../proyecto.c **** 
+ 578:../proyecto.c **** // Hora
+ 579:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.hour / 10); // Primer dígito de la hora
+ 4187              		.loc 1 579 0
+ 4188 1460 18301BE5 		ldr	r3, [fp, #-24]
+ 4189 1464 28201BE5 		ldr	r2, [fp, #-40]
+ 4190 1468 033082E0 		add	r3, r2, r3
+ 4191 146c 22105BE5 		ldrb	r1, [fp, #-34]	@ zero_extendqisi2
+ 4192 1470 D4219FE5 		ldr	r2, .L119
+ 4193 1474 910282E0 		umull	r0, r2, r1, r2
+ 4194 1478 A221A0E1 		mov	r2, r2, lsr #3
+ 4195 147c FF2002E2 		and	r2, r2, #255
+ 4196 1480 302082E2 		add	r2, r2, #48
+ 4197 1484 FF2002E2 		and	r2, r2, #255
+ 4198 1488 0020C3E5 		strb	r2, [r3, #0]
+ 4199 148c 18301BE5 		ldr	r3, [fp, #-24]
+ 4200 1490 013083E2 		add	r3, r3, #1
+ 4201 1494 18300BE5 		str	r3, [fp, #-24]
+ 580:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.hour % 10); // Segundo dígito de la hora
+ 4202              		.loc 1 580 0
+ 4203 1498 18301BE5 		ldr	r3, [fp, #-24]
+ 4204 149c 28201BE5 		ldr	r2, [fp, #-40]
+ 4205 14a0 030082E0 		add	r0, r2, r3
+ 4206 14a4 22205BE5 		ldrb	r2, [fp, #-34]	@ zero_extendqisi2
+ 4207 14a8 9C319FE5 		ldr	r3, .L119
+ 4208 14ac 921383E0 		umull	r1, r3, r2, r3
+ 4209 14b0 A311A0E1 		mov	r1, r3, lsr #3
+ 4210 14b4 0130A0E1 		mov	r3, r1
+ 4211 14b8 0331A0E1 		mov	r3, r3, asl #2
+ 4212 14bc 013083E0 		add	r3, r3, r1
+ 4213 14c0 8330A0E1 		mov	r3, r3, asl #1
+ 4214 14c4 023063E0 		rsb	r3, r3, r2
+ 4215 14c8 FF3003E2 		and	r3, r3, #255
+ 4216 14cc 303083E2 		add	r3, r3, #48
+ 4217 14d0 FF3003E2 		and	r3, r3, #255
+ 4218 14d4 0030C0E5 		strb	r3, [r0, #0]
+ 4219 14d8 18301BE5 		ldr	r3, [fp, #-24]
+ 4220 14dc 013083E2 		add	r3, r3, #1
+ 4221 14e0 18300BE5 		str	r3, [fp, #-24]
+ 581:../proyecto.c **** 	buffer[pos++] = ':';
+ 4222              		.loc 1 581 0
+ 4223 14e4 18301BE5 		ldr	r3, [fp, #-24]
+ 4224 14e8 28201BE5 		ldr	r2, [fp, #-40]
+ 4225 14ec 033082E0 		add	r3, r2, r3
+ 4226 14f0 3A20A0E3 		mov	r2, #58
+ 4227 14f4 0020C3E5 		strb	r2, [r3, #0]
+ 4228 14f8 18301BE5 		ldr	r3, [fp, #-24]
+ 4229 14fc 013083E2 		add	r3, r3, #1
+ 4230 1500 18300BE5 		str	r3, [fp, #-24]
+ 582:../proyecto.c **** 
+ 583:../proyecto.c **** // Minutos
+ 584:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.min / 10); // Primer dígito de los minutos
+ 4231              		.loc 1 584 0
+ 4232 1504 18301BE5 		ldr	r3, [fp, #-24]
+ 4233 1508 28201BE5 		ldr	r2, [fp, #-40]
+ 4234 150c 033082E0 		add	r3, r2, r3
+ 4235 1510 23105BE5 		ldrb	r1, [fp, #-35]	@ zero_extendqisi2
+ 4236 1514 30219FE5 		ldr	r2, .L119
+ 4237 1518 910282E0 		umull	r0, r2, r1, r2
+ 4238 151c A221A0E1 		mov	r2, r2, lsr #3
+ 4239 1520 FF2002E2 		and	r2, r2, #255
+ 4240 1524 302082E2 		add	r2, r2, #48
+ 4241 1528 FF2002E2 		and	r2, r2, #255
+ 4242 152c 0020C3E5 		strb	r2, [r3, #0]
+ 4243 1530 18301BE5 		ldr	r3, [fp, #-24]
+ 4244 1534 013083E2 		add	r3, r3, #1
+ 4245 1538 18300BE5 		str	r3, [fp, #-24]
+ 585:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.min % 10); // Segundo dígito de los minutos
+ 4246              		.loc 1 585 0
+ 4247 153c 18301BE5 		ldr	r3, [fp, #-24]
+ 4248 1540 28201BE5 		ldr	r2, [fp, #-40]
+ 4249 1544 030082E0 		add	r0, r2, r3
+ 4250 1548 23205BE5 		ldrb	r2, [fp, #-35]	@ zero_extendqisi2
+ 4251 154c F8309FE5 		ldr	r3, .L119
+ 4252 1550 921383E0 		umull	r1, r3, r2, r3
+ 4253 1554 A311A0E1 		mov	r1, r3, lsr #3
+ 4254 1558 0130A0E1 		mov	r3, r1
+ 4255 155c 0331A0E1 		mov	r3, r3, asl #2
+ 4256 1560 013083E0 		add	r3, r3, r1
+ 4257 1564 8330A0E1 		mov	r3, r3, asl #1
+ 4258 1568 023063E0 		rsb	r3, r3, r2
+ 4259 156c FF3003E2 		and	r3, r3, #255
+ 4260 1570 303083E2 		add	r3, r3, #48
+ 4261 1574 FF3003E2 		and	r3, r3, #255
+ 4262 1578 0030C0E5 		strb	r3, [r0, #0]
+ 4263 157c 18301BE5 		ldr	r3, [fp, #-24]
+ 4264 1580 013083E2 		add	r3, r3, #1
+ 4265 1584 18300BE5 		str	r3, [fp, #-24]
+ 586:../proyecto.c **** 	buffer[pos++] = ':';
+ 4266              		.loc 1 586 0
+ 4267 1588 18301BE5 		ldr	r3, [fp, #-24]
+ 4268 158c 28201BE5 		ldr	r2, [fp, #-40]
+ 4269 1590 033082E0 		add	r3, r2, r3
+ 4270 1594 3A20A0E3 		mov	r2, #58
+ 4271 1598 0020C3E5 		strb	r2, [r3, #0]
+ 4272 159c 18301BE5 		ldr	r3, [fp, #-24]
+ 4273 15a0 013083E2 		add	r3, r3, #1
+ 4274 15a4 18300BE5 		str	r3, [fp, #-24]
+ 587:../proyecto.c **** 
+ 588:../proyecto.c **** // Segundos
+ 589:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.sec / 10); // Primer dígito de los segundos
+ 4275              		.loc 1 589 0
+ 4276 15a8 18301BE5 		ldr	r3, [fp, #-24]
+ 4277 15ac 28201BE5 		ldr	r2, [fp, #-40]
+ 4278 15b0 033082E0 		add	r3, r2, r3
+ 4279 15b4 24105BE5 		ldrb	r1, [fp, #-36]	@ zero_extendqisi2
+ 4280 15b8 8C209FE5 		ldr	r2, .L119
+ 4281 15bc 910282E0 		umull	r0, r2, r1, r2
+ 4282 15c0 A221A0E1 		mov	r2, r2, lsr #3
+ 4283 15c4 FF2002E2 		and	r2, r2, #255
+ 4284 15c8 302082E2 		add	r2, r2, #48
+ 4285 15cc FF2002E2 		and	r2, r2, #255
+ 4286 15d0 0020C3E5 		strb	r2, [r3, #0]
+ 4287 15d4 18301BE5 		ldr	r3, [fp, #-24]
+ 4288 15d8 013083E2 		add	r3, r3, #1
+ 4289 15dc 18300BE5 		str	r3, [fp, #-24]
+ 590:../proyecto.c **** 	buffer[pos++] = '0' + (tiempoActual.sec % 10); // Segundo dígito de los segundos
+ 4290              		.loc 1 590 0
+ 4291 15e0 18301BE5 		ldr	r3, [fp, #-24]
+ 4292 15e4 28201BE5 		ldr	r2, [fp, #-40]
+ 4293 15e8 030082E0 		add	r0, r2, r3
+ 4294 15ec 24205BE5 		ldrb	r2, [fp, #-36]	@ zero_extendqisi2
+ 4295 15f0 54309FE5 		ldr	r3, .L119
+ 4296 15f4 921383E0 		umull	r1, r3, r2, r3
+ 4297 15f8 A311A0E1 		mov	r1, r3, lsr #3
+ 4298 15fc 0130A0E1 		mov	r3, r1
+ 4299 1600 0331A0E1 		mov	r3, r3, asl #2
+ 4300 1604 013083E0 		add	r3, r3, r1
+ 4301 1608 8330A0E1 		mov	r3, r3, asl #1
+ 4302 160c 023063E0 		rsb	r3, r3, r2
+ 4303 1610 FF3003E2 		and	r3, r3, #255
+ 4304 1614 303083E2 		add	r3, r3, #48
+ 4305 1618 FF3003E2 		and	r3, r3, #255
+ 4306 161c 0030C0E5 		strb	r3, [r0, #0]
+ 4307 1620 18301BE5 		ldr	r3, [fp, #-24]
+ 4308 1624 013083E2 		add	r3, r3, #1
+ 4309 1628 18300BE5 		str	r3, [fp, #-24]
+ 591:../proyecto.c **** 
+ 592:../proyecto.c **** // Terminar la cadena
+ 593:../proyecto.c **** 	buffer[pos] = '\0';
+ 4310              		.loc 1 593 0
+ 4311 162c 18301BE5 		ldr	r3, [fp, #-24]
+ 4312 1630 28201BE5 		ldr	r2, [fp, #-40]
+ 4313 1634 033082E0 		add	r3, r2, r3
+ 4314 1638 0020A0E3 		mov	r2, #0
+ 4315 163c 0020C3E5 		strb	r2, [r3, #0]
+ 594:../proyecto.c **** }
+ 4316              		.loc 1 594 0
+ 4317 1640 0CD04BE2 		sub	sp, fp, #12
+ 4318 1644 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 4319 1648 1EFF2FE1 		bx	lr
+ 4320              	.L120:
+ 4321              		.align	2
+ 4322              	.L119:
+ 4323 164c CDCCCCCC 		.word	-858993459
+ 4324 1650 1F85EB51 		.word	1374389535
+ 4325              		.cfi_endproc
+ 4326              	.LFE11:
+ 4328              		.section	.rodata
+ 4329              		.align	2
+ 4330              	.LC32:
+ 4331 01f0 53656C65 		.ascii	"Selecciona plaza\000"
+ 4331      6363696F 
+ 4331      6E612070 
+ 4331      6C617A61 
+ 4331      00
+ 4332 0201 000000   		.align	2
+ 4333              	.LC33:
+ 4334 0204 53656C65 		.ascii	"Select place\000"
+ 4334      63742070 
+ 4334      6C616365 
+ 4334      00
+ 4335              		.text
+ 4336              		.align	2
+ 4337              		.global	plotSelectionScreen
+ 4339              	plotSelectionScreen:
+ 4340              	.LFB12:
+ 595:../proyecto.c **** 
+ 596:../proyecto.c **** void plotSelectionScreen(void) {
+ 4341              		.loc 1 596 0
+ 4342              		.cfi_startproc
+ 4343              		@ Function supports interworking.
+ 4344              		@ args = 0, pretend = 0, frame = 8
+ 4345              		@ frame_needed = 1, uses_anonymous_args = 0
+ 4346 1654 0DC0A0E1 		mov	ip, sp
+ 4347              	.LCFI24:
+ 4348              		.cfi_def_cfa_register 12
+ 4349 1658 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 4350 165c 04B04CE2 		sub	fp, ip, #4
+ 4351              		.cfi_offset 14, -8
+ 4352              		.cfi_offset 13, -12
+ 4353              		.cfi_offset 11, -16
+ 4354              	.LCFI25:
+ 4355              		.cfi_def_cfa 11, 4
+ 4356 1660 10D04DE2 		sub	sp, sp, #16
+ 597:../proyecto.c **** 
+ 598:../proyecto.c **** 	if (parking.espanol) {
+ 4357              		.loc 1 598 0
+ 4358 1664 38329FE5 		ldr	r3, .L130
+ 4359 1668 4230D3E5 		ldrb	r3, [r3, #66]	@ zero_extendqisi2
+ 4360 166c 000053E3 		cmp	r3, #0
+ 4361 1670 0500000A 		beq	.L122
+ 599:../proyecto.c **** 		lcd_puts_x2(20, 35, BLACK, "Selecciona plaza");
+ 4362              		.loc 1 599 0
+ 4363 1674 1400A0E3 		mov	r0, #20
+ 4364 1678 2310A0E3 		mov	r1, #35
+ 4365 167c 0F20A0E3 		mov	r2, #15
+ 4366 1680 20329FE5 		ldr	r3, .L130+4
+ 4367 1684 FEFFFFEB 		bl	lcd_puts_x2
+ 4368 1688 040000EA 		b	.L123
+ 4369              	.L122:
+ 600:../proyecto.c **** 	} else {
+ 601:../proyecto.c **** 		lcd_puts_x2(20, 35, BLACK, "Select place");
+ 4370              		.loc 1 601 0
+ 4371 168c 1400A0E3 		mov	r0, #20
+ 4372 1690 2310A0E3 		mov	r1, #35
+ 4373 1694 0F20A0E3 		mov	r2, #15
+ 4374 1698 0C329FE5 		ldr	r3, .L130+8
+ 4375 169c FEFFFFEB 		bl	lcd_puts_x2
+ 4376              	.L123:
+ 602:../proyecto.c **** 	}
+ 603:../proyecto.c **** 	lcd_draw_box(0, 80, 79, 139, BLACK, 1); /* Pinta cuadricula */
+ 4377              		.loc 1 603 0
+ 4378 16a0 0F30A0E3 		mov	r3, #15
+ 4379 16a4 00308DE5 		str	r3, [sp, #0]
+ 4380 16a8 0130A0E3 		mov	r3, #1
+ 4381 16ac 04308DE5 		str	r3, [sp, #4]
+ 4382 16b0 0000A0E3 		mov	r0, #0
+ 4383 16b4 5010A0E3 		mov	r1, #80
+ 4384 16b8 4F20A0E3 		mov	r2, #79
+ 4385 16bc 8B30A0E3 		mov	r3, #139
+ 4386 16c0 FEFFFFEB 		bl	lcd_draw_box
+ 604:../proyecto.c **** 	lcd_draw_box(79, 80, 159, 139, BLACK, 1);
+ 4387              		.loc 1 604 0
+ 4388 16c4 0F30A0E3 		mov	r3, #15
+ 4389 16c8 00308DE5 		str	r3, [sp, #0]
+ 4390 16cc 0130A0E3 		mov	r3, #1
+ 4391 16d0 04308DE5 		str	r3, [sp, #4]
+ 4392 16d4 4F00A0E3 		mov	r0, #79
+ 4393 16d8 5010A0E3 		mov	r1, #80
+ 4394 16dc 9F20A0E3 		mov	r2, #159
+ 4395 16e0 8B30A0E3 		mov	r3, #139
+ 4396 16e4 FEFFFFEB 		bl	lcd_draw_box
+ 605:../proyecto.c **** 	lcd_draw_box(159, 80, 239, 139, BLACK, 1);
+ 4397              		.loc 1 605 0
+ 4398 16e8 0F30A0E3 		mov	r3, #15
+ 4399 16ec 00308DE5 		str	r3, [sp, #0]
+ 4400 16f0 0130A0E3 		mov	r3, #1
+ 4401 16f4 04308DE5 		str	r3, [sp, #4]
+ 4402 16f8 9F00A0E3 		mov	r0, #159
+ 4403 16fc 5010A0E3 		mov	r1, #80
+ 4404 1700 EF20A0E3 		mov	r2, #239
+ 4405 1704 8B30A0E3 		mov	r3, #139
+ 4406 1708 FEFFFFEB 		bl	lcd_draw_box
+ 606:../proyecto.c **** 	lcd_draw_box(239, 80, 319, 139, BLACK, 1);
+ 4407              		.loc 1 606 0
+ 4408 170c 0F30A0E3 		mov	r3, #15
+ 4409 1710 00308DE5 		str	r3, [sp, #0]
+ 4410 1714 0130A0E3 		mov	r3, #1
+ 4411 1718 04308DE5 		str	r3, [sp, #4]
+ 4412 171c EF00A0E3 		mov	r0, #239
+ 4413 1720 5010A0E3 		mov	r1, #80
+ 4414 1724 84219FE5 		ldr	r2, .L130+12
+ 4415 1728 8B30A0E3 		mov	r3, #139
+ 4416 172c FEFFFFEB 		bl	lcd_draw_box
+ 607:../proyecto.c **** 	lcd_draw_box(0, 139, 79, 199, BLACK, 1);
+ 4417              		.loc 1 607 0
+ 4418 1730 0F30A0E3 		mov	r3, #15
+ 4419 1734 00308DE5 		str	r3, [sp, #0]
+ 4420 1738 0130A0E3 		mov	r3, #1
+ 4421 173c 04308DE5 		str	r3, [sp, #4]
+ 4422 1740 0000A0E3 		mov	r0, #0
+ 4423 1744 8B10A0E3 		mov	r1, #139
+ 4424 1748 4F20A0E3 		mov	r2, #79
+ 4425 174c C730A0E3 		mov	r3, #199
+ 4426 1750 FEFFFFEB 		bl	lcd_draw_box
+ 608:../proyecto.c **** 	lcd_draw_box(79, 139, 159, 199, BLACK, 1);
+ 4427              		.loc 1 608 0
+ 4428 1754 0F30A0E3 		mov	r3, #15
+ 4429 1758 00308DE5 		str	r3, [sp, #0]
+ 4430 175c 0130A0E3 		mov	r3, #1
+ 4431 1760 04308DE5 		str	r3, [sp, #4]
+ 4432 1764 4F00A0E3 		mov	r0, #79
+ 4433 1768 8B10A0E3 		mov	r1, #139
+ 4434 176c 9F20A0E3 		mov	r2, #159
+ 4435 1770 C730A0E3 		mov	r3, #199
+ 4436 1774 FEFFFFEB 		bl	lcd_draw_box
+ 609:../proyecto.c **** 	lcd_draw_box(159, 139, 239, 199, BLACK, 1);
+ 4437              		.loc 1 609 0
+ 4438 1778 0F30A0E3 		mov	r3, #15
+ 4439 177c 00308DE5 		str	r3, [sp, #0]
+ 4440 1780 0130A0E3 		mov	r3, #1
+ 4441 1784 04308DE5 		str	r3, [sp, #4]
+ 4442 1788 9F00A0E3 		mov	r0, #159
+ 4443 178c 8B10A0E3 		mov	r1, #139
+ 4444 1790 EF20A0E3 		mov	r2, #239
+ 4445 1794 C730A0E3 		mov	r3, #199
+ 4446 1798 FEFFFFEB 		bl	lcd_draw_box
+ 610:../proyecto.c **** 	lcd_draw_box(239, 139, 319, 199, BLACK, 1);
+ 4447              		.loc 1 610 0
+ 4448 179c 0F30A0E3 		mov	r3, #15
+ 4449 17a0 00308DE5 		str	r3, [sp, #0]
+ 4450 17a4 0130A0E3 		mov	r3, #1
+ 4451 17a8 04308DE5 		str	r3, [sp, #4]
+ 4452 17ac EF00A0E3 		mov	r0, #239
+ 4453 17b0 8B10A0E3 		mov	r1, #139
+ 4454 17b4 F4209FE5 		ldr	r2, .L130+12
+ 4455 17b8 C730A0E3 		mov	r3, #199
+ 4456 17bc FEFFFFEB 		bl	lcd_draw_box
+ 611:../proyecto.c **** 
+ 612:../proyecto.c **** 	uint16 COL = 86;
+ 4457              		.loc 1 612 0
+ 4458 17c0 5630A0E3 		mov	r3, #86
+ 4459 17c4 BE304BE1 		strh	r3, [fp, #-14]	@ movhi
+ 613:../proyecto.c **** 	uint8 i;
+ 614:../proyecto.c **** 	uint8 plaza = 1;
+ 4460              		.loc 1 614 0
+ 4461 17c8 0130A0E3 		mov	r3, #1
+ 4462 17cc 10304BE5 		strb	r3, [fp, #-16]
+ 615:../proyecto.c **** 	for (i = 0; i < 2; i++) {
+ 4463              		.loc 1 615 0
+ 4464 17d0 0030A0E3 		mov	r3, #0
+ 4465 17d4 0F304BE5 		strb	r3, [fp, #-15]
+ 4466 17d8 2B0000EA 		b	.L124
+ 4467              	.L129:
+ 4468              	.LBB4:
+ 616:../proyecto.c **** 		uint8 j;
+ 617:../proyecto.c **** 		uint16 FILA = 32;
+ 4469              		.loc 1 617 0
+ 4470 17dc 2030A0E3 		mov	r3, #32
+ 4471 17e0 B4314BE1 		strh	r3, [fp, #-20]	@ movhi
+ 618:../proyecto.c **** 		for (j = 0; j < 4; j++) {
+ 4472              		.loc 1 618 0
+ 4473 17e4 0030A0E3 		mov	r3, #0
+ 4474 17e8 11304BE5 		strb	r3, [fp, #-17]
+ 4475 17ec 1D0000EA 		b	.L125
+ 4476              	.L128:
+ 619:../proyecto.c **** 			if (!parking.plaza[plaza - 1].occupied) {
+ 4477              		.loc 1 619 0
+ 4478 17f0 10305BE5 		ldrb	r3, [fp, #-16]	@ zero_extendqisi2
+ 4479 17f4 012043E2 		sub	r2, r3, #1
+ 4480 17f8 A4309FE5 		ldr	r3, .L130
+ 4481 17fc 8231D3E7 		ldrb	r3, [r3, r2, asl #3]	@ zero_extendqisi2
+ 4482 1800 000053E3 		cmp	r3, #0
+ 4483 1804 0700001A 		bne	.L126
+ 620:../proyecto.c **** 				lcd_putint_x2(FILA, COL, BLACK, plaza);
+ 4484              		.loc 1 620 0
+ 4485 1808 10305BE5 		ldrb	r3, [fp, #-16]	@ zero_extendqisi2
+ 4486 180c B4115BE1 		ldrh	r1, [fp, #-20]
+ 4487 1810 BE205BE1 		ldrh	r2, [fp, #-14]
+ 4488 1814 0100A0E1 		mov	r0, r1
+ 4489 1818 0210A0E1 		mov	r1, r2
+ 4490 181c 0F20A0E3 		mov	r2, #15
+ 4491 1820 FEFFFFEB 		bl	lcd_putint_x2
+ 4492 1824 060000EA 		b	.L127
+ 4493              	.L126:
+ 621:../proyecto.c **** 			} else {
+ 622:../proyecto.c **** 				lcd_putchar_x2(FILA, COL, BLACK, 'X');
+ 4494              		.loc 1 622 0
+ 4495 1828 B4215BE1 		ldrh	r2, [fp, #-20]
+ 4496 182c BE305BE1 		ldrh	r3, [fp, #-14]
+ 4497 1830 0200A0E1 		mov	r0, r2
+ 4498 1834 0310A0E1 		mov	r1, r3
+ 4499 1838 0F20A0E3 		mov	r2, #15
+ 4500 183c 5830A0E3 		mov	r3, #88
+ 4501 1840 FEFFFFEB 		bl	lcd_putchar_x2
+ 4502              	.L127:
+ 623:../proyecto.c **** 			}
+ 624:../proyecto.c **** 			FILA += 80;
+ 4503              		.loc 1 624 0
+ 4504 1844 B4315BE1 		ldrh	r3, [fp, #-20]	@ movhi
+ 4505 1848 503083E2 		add	r3, r3, #80
+ 4506 184c B4314BE1 		strh	r3, [fp, #-20]	@ movhi
+ 625:../proyecto.c **** 			plaza++;
+ 4507              		.loc 1 625 0
+ 4508 1850 10305BE5 		ldrb	r3, [fp, #-16]
+ 4509 1854 013083E2 		add	r3, r3, #1
+ 4510 1858 10304BE5 		strb	r3, [fp, #-16]
+ 618:../proyecto.c **** 		for (j = 0; j < 4; j++) {
+ 4511              		.loc 1 618 0
+ 4512 185c 11305BE5 		ldrb	r3, [fp, #-17]
+ 4513 1860 013083E2 		add	r3, r3, #1
+ 4514 1864 11304BE5 		strb	r3, [fp, #-17]
+ 4515              	.L125:
+ 618:../proyecto.c **** 		for (j = 0; j < 4; j++) {
+ 4516              		.loc 1 618 0 is_stmt 0 discriminator 1
+ 4517 1868 11305BE5 		ldrb	r3, [fp, #-17]	@ zero_extendqisi2
+ 4518 186c 030053E3 		cmp	r3, #3
+ 4519 1870 DEFFFF9A 		bls	.L128
+ 626:../proyecto.c **** 		}
+ 627:../proyecto.c **** 		COL += 60;
+ 4520              		.loc 1 627 0 is_stmt 1
+ 4521 1874 BE305BE1 		ldrh	r3, [fp, #-14]	@ movhi
+ 4522 1878 3C3083E2 		add	r3, r3, #60
+ 4523 187c BE304BE1 		strh	r3, [fp, #-14]	@ movhi
+ 4524              	.LBE4:
+ 615:../proyecto.c **** 	for (i = 0; i < 2; i++) {
+ 4525              		.loc 1 615 0
+ 4526 1880 0F305BE5 		ldrb	r3, [fp, #-15]
+ 4527 1884 013083E2 		add	r3, r3, #1
+ 4528 1888 0F304BE5 		strb	r3, [fp, #-15]
+ 4529              	.L124:
+ 615:../proyecto.c **** 	for (i = 0; i < 2; i++) {
+ 4530              		.loc 1 615 0 is_stmt 0 discriminator 1
+ 4531 188c 0F305BE5 		ldrb	r3, [fp, #-15]	@ zero_extendqisi2
+ 4532 1890 010053E3 		cmp	r3, #1
+ 4533 1894 D0FFFF9A 		bls	.L129
+ 628:../proyecto.c **** 	}
+ 629:../proyecto.c **** }
+ 4534              		.loc 1 629 0 is_stmt 1
+ 4535 1898 0CD04BE2 		sub	sp, fp, #12
+ 4536 189c 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 4537 18a0 1EFF2FE1 		bx	lr
+ 4538              	.L131:
+ 4539              		.align	2
+ 4540              	.L130:
+ 4541 18a4 00000000 		.word	parking
+ 4542 18a8 F0010000 		.word	.LC32
+ 4543 18ac 04020000 		.word	.LC33
+ 4544 18b0 3F010000 		.word	319
+ 4545              		.cfi_endproc
+ 4546              	.LFE12:
+ 4548              		.align	2
+ 4549              		.global	idiomaSeleccionado
+ 4551              	idiomaSeleccionado:
+ 4552              	.LFB13:
+ 630:../proyecto.c **** 
+ 631:../proyecto.c **** void idiomaSeleccionado(void) {
+ 4553              		.loc 1 631 0
+ 4554              		.cfi_startproc
+ 4555              		@ Function supports interworking.
+ 4556              		@ args = 0, pretend = 0, frame = 0
+ 4557              		@ frame_needed = 1, uses_anonymous_args = 0
+ 4558 18b4 0DC0A0E1 		mov	ip, sp
+ 4559              	.LCFI26:
+ 4560              		.cfi_def_cfa_register 12
+ 4561 18b8 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 4562 18bc 04B04CE2 		sub	fp, ip, #4
+ 4563              		.cfi_offset 14, -8
+ 4564              		.cfi_offset 13, -12
+ 4565              		.cfi_offset 11, -16
+ 4566              	.LCFI27:
+ 4567              		.cfi_def_cfa 11, 4
+ 632:../proyecto.c **** 
+ 633:../proyecto.c **** 	if (tsPressedMsg.x > 0 && tsPressedMsg.y > 80 && tsPressedMsg.x < 150
+ 4568              		.loc 1 633 0
+ 4569 18c0 A4309FE5 		ldr	r3, .L135
+ 4570 18c4 B230D3E1 		ldrh	r3, [r3, #2]
+ 4571 18c8 000053E3 		cmp	r3, #0
+ 4572 18cc 0F00000A 		beq	.L133
+ 4573              		.loc 1 633 0 is_stmt 0 discriminator 1
+ 4574 18d0 94309FE5 		ldr	r3, .L135
+ 4575 18d4 B430D3E1 		ldrh	r3, [r3, #4]
+ 4576 18d8 500053E3 		cmp	r3, #80
+ 4577 18dc 0B00009A 		bls	.L133
+ 4578 18e0 84309FE5 		ldr	r3, .L135
+ 4579 18e4 B230D3E1 		ldrh	r3, [r3, #2]
+ 4580 18e8 950053E3 		cmp	r3, #149
+ 4581 18ec 0700008A 		bhi	.L133
+ 634:../proyecto.c **** 			&& tsPressedMsg.y < 150) {
+ 4582              		.loc 1 634 0 is_stmt 1
+ 4583 18f0 74309FE5 		ldr	r3, .L135
+ 4584 18f4 B430D3E1 		ldrh	r3, [r3, #4]
+ 4585 18f8 950053E3 		cmp	r3, #149
+ 4586 18fc 0300008A 		bhi	.L133
+ 635:../proyecto.c **** 		parking.espanol = TRUE;
+ 4587              		.loc 1 635 0
+ 4588 1900 68309FE5 		ldr	r3, .L135+4
+ 4589 1904 0120A0E3 		mov	r2, #1
+ 4590 1908 4220C3E5 		strb	r2, [r3, #66]
+ 4591 190c 130000EA 		b	.L132
+ 4592              	.L133:
+ 636:../proyecto.c **** 	} else if (tsPressedMsg.x > 160 && tsPressedMsg.y > 80
+ 4593              		.loc 1 636 0
+ 4594 1910 54309FE5 		ldr	r3, .L135
+ 4595 1914 B230D3E1 		ldrh	r3, [r3, #2]
+ 4596 1918 A00053E3 		cmp	r3, #160
+ 4597 191c 0F00009A 		bls	.L132
+ 4598              		.loc 1 636 0 is_stmt 0 discriminator 1
+ 4599 1920 44309FE5 		ldr	r3, .L135
+ 4600 1924 B430D3E1 		ldrh	r3, [r3, #4]
+ 4601 1928 500053E3 		cmp	r3, #80
+ 4602 192c 0B00009A 		bls	.L132
+ 637:../proyecto.c **** 			&& tsPressedMsg.x < 319 && tsPressedMsg.y < 150) {
+ 4603              		.loc 1 637 0 is_stmt 1
+ 4604 1930 34309FE5 		ldr	r3, .L135
+ 4605 1934 B220D3E1 		ldrh	r2, [r3, #2]
+ 4606 1938 34309FE5 		ldr	r3, .L135+8
+ 4607 193c 030052E1 		cmp	r2, r3
+ 4608 1940 0600008A 		bhi	.L132
+ 4609              		.loc 1 637 0 is_stmt 0 discriminator 1
+ 4610 1944 20309FE5 		ldr	r3, .L135
+ 4611 1948 B430D3E1 		ldrh	r3, [r3, #4]
+ 4612 194c 950053E3 		cmp	r3, #149
+ 4613 1950 0200008A 		bhi	.L132
+ 638:../proyecto.c **** 		parking.espanol = FALSE;
+ 4614              		.loc 1 638 0 is_stmt 1
+ 4615 1954 14309FE5 		ldr	r3, .L135+4
+ 4616 1958 0020A0E3 		mov	r2, #0
+ 4617 195c 4220C3E5 		strb	r2, [r3, #66]
+ 4618              	.L132:
+ 639:../proyecto.c **** 	}
+ 640:../proyecto.c **** }
+ 4619              		.loc 1 640 0
+ 4620 1960 0CD04BE2 		sub	sp, fp, #12
+ 4621 1964 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 4622 1968 1EFF2FE1 		bx	lr
+ 4623              	.L136:
+ 4624              		.align	2
+ 4625              	.L135:
+ 4626 196c 00000000 		.word	tsPressedMsg
+ 4627 1970 00000000 		.word	parking
+ 4628 1974 3E010000 		.word	318
+ 4629              		.cfi_endproc
+ 4630              	.LFE13:
+ 4632              		.section	.rodata
+ 4633 0211 000000   		.align	2
+ 4634              	.LC34:
+ 4635 0214 45535041 		.ascii	"ESPANOL\000"
+ 4635      4E4F4C00 
+ 4636              		.align	2
+ 4637              	.LC35:
+ 4638 021c 7C7C00   		.ascii	"||\000"
+ 4639 021f 00       		.align	2
+ 4640              	.LC36:
+ 4641 0220 454E474C 		.ascii	"ENGLISH\000"
+ 4641      49534800 
+ 4642              		.text
+ 4643              		.align	2
+ 4644              		.global	idiomaScreen
+ 4646              	idiomaScreen:
+ 4647              	.LFB14:
+ 641:../proyecto.c **** 
+ 642:../proyecto.c **** void idiomaScreen(void) {
+ 4648              		.loc 1 642 0
+ 4649              		.cfi_startproc
+ 4650              		@ Function supports interworking.
+ 4651              		@ args = 0, pretend = 0, frame = 0
+ 4652              		@ frame_needed = 1, uses_anonymous_args = 0
+ 4653 1978 0DC0A0E1 		mov	ip, sp
+ 4654              	.LCFI28:
+ 4655              		.cfi_def_cfa_register 12
+ 4656 197c 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 4657 1980 04B04CE2 		sub	fp, ip, #4
+ 4658              		.cfi_offset 14, -8
+ 4659              		.cfi_offset 13, -12
+ 4660              		.cfi_offset 11, -16
+ 4661              	.LCFI29:
+ 4662              		.cfi_def_cfa 11, 4
+ 643:../proyecto.c **** 
+ 644:../proyecto.c **** 	lcd_puts_x2(20, 100, BLACK, "ESPANOL");
+ 4663              		.loc 1 644 0
+ 4664 1984 1400A0E3 		mov	r0, #20
+ 4665 1988 6410A0E3 		mov	r1, #100
+ 4666 198c 0F20A0E3 		mov	r2, #15
+ 4667 1990 34309FE5 		ldr	r3, .L138
+ 4668 1994 FEFFFFEB 		bl	lcd_puts_x2
+ 645:../proyecto.c **** 	lcd_puts_x2(150, 100, BLACK, "||");
+ 4669              		.loc 1 645 0
+ 4670 1998 9600A0E3 		mov	r0, #150
+ 4671 199c 6410A0E3 		mov	r1, #100
+ 4672 19a0 0F20A0E3 		mov	r2, #15
+ 4673 19a4 24309FE5 		ldr	r3, .L138+4
+ 4674 19a8 FEFFFFEB 		bl	lcd_puts_x2
+ 646:../proyecto.c **** 	lcd_puts_x2(200, 100, BLACK, "ENGLISH");
+ 4675              		.loc 1 646 0
+ 4676 19ac C800A0E3 		mov	r0, #200
+ 4677 19b0 6410A0E3 		mov	r1, #100
+ 4678 19b4 0F20A0E3 		mov	r2, #15
+ 4679 19b8 14309FE5 		ldr	r3, .L138+8
+ 4680 19bc FEFFFFEB 		bl	lcd_puts_x2
+ 647:../proyecto.c **** }
+ 4681              		.loc 1 647 0
+ 4682 19c0 0CD04BE2 		sub	sp, fp, #12
+ 4683 19c4 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 4684 19c8 1EFF2FE1 		bx	lr
+ 4685              	.L139:
+ 4686              		.align	2
+ 4687              	.L138:
+ 4688 19cc 14020000 		.word	.LC34
+ 4689 19d0 1C020000 		.word	.LC35
+ 4690 19d4 20020000 		.word	.LC36
+ 4691              		.cfi_endproc
+ 4692              	.LFE14:
+ 4694              		.align	2
+ 4695              		.global	plazaSeleccionada
+ 4697              	plazaSeleccionada:
+ 4698              	.LFB15:
+ 648:../proyecto.c **** 
+ 649:../proyecto.c **** uint8 plazaSeleccionada(void) { //Función que devuelve que plaza ha sido pulsada
+ 4699              		.loc 1 649 0
+ 4700              		.cfi_startproc
+ 4701              		@ Function supports interworking.
+ 4702              		@ args = 0, pretend = 0, frame = 8
+ 4703              		@ frame_needed = 1, uses_anonymous_args = 0
+ 4704 19d8 0DC0A0E1 		mov	ip, sp
+ 4705              	.LCFI30:
+ 4706              		.cfi_def_cfa_register 12
+ 4707 19dc 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 4708 19e0 04B04CE2 		sub	fp, ip, #4
+ 4709              		.cfi_offset 14, -8
+ 4710              		.cfi_offset 13, -12
+ 4711              		.cfi_offset 11, -16
+ 4712              	.LCFI31:
+ 4713              		.cfi_def_cfa 11, 4
+ 4714 19e4 08D04DE2 		sub	sp, sp, #8
+ 650:../proyecto.c **** 
+ 651:../proyecto.c **** 	uint8 sol;
+ 652:../proyecto.c **** 
+ 653:../proyecto.c **** 	if (tsPressedMsg.x > 0 && tsPressedMsg.y > 80 && tsPressedMsg.x < 79
+ 4715              		.loc 1 653 0
+ 4716 19e8 70329FE5 		ldr	r3, .L149
+ 4717 19ec B230D3E1 		ldrh	r3, [r3, #2]
+ 4718 19f0 000053E3 		cmp	r3, #0
+ 4719 19f4 0E00000A 		beq	.L141
+ 4720              		.loc 1 653 0 is_stmt 0 discriminator 1
+ 4721 19f8 60329FE5 		ldr	r3, .L149
+ 4722 19fc B430D3E1 		ldrh	r3, [r3, #4]
+ 4723 1a00 500053E3 		cmp	r3, #80
+ 4724 1a04 0A00009A 		bls	.L141
+ 4725 1a08 50329FE5 		ldr	r3, .L149
+ 4726 1a0c B230D3E1 		ldrh	r3, [r3, #2]
+ 4727 1a10 4E0053E3 		cmp	r3, #78
+ 4728 1a14 0600008A 		bhi	.L141
+ 654:../proyecto.c **** 			&& tsPressedMsg.y < 139) {
+ 4729              		.loc 1 654 0 is_stmt 1
+ 4730 1a18 40329FE5 		ldr	r3, .L149
+ 4731 1a1c B430D3E1 		ldrh	r3, [r3, #4]
+ 4732 1a20 8A0053E3 		cmp	r3, #138
+ 4733 1a24 0200008A 		bhi	.L141
+ 655:../proyecto.c **** 		sol = 1;
+ 4734              		.loc 1 655 0
+ 4735 1a28 0130A0E3 		mov	r3, #1
+ 4736 1a2c 0D304BE5 		strb	r3, [fp, #-13]
+ 4737 1a30 850000EA 		b	.L142
+ 4738              	.L141:
+ 656:../proyecto.c **** 	} else if (tsPressedMsg.x > 79 && tsPressedMsg.y > 80
+ 4739              		.loc 1 656 0
+ 4740 1a34 24329FE5 		ldr	r3, .L149
+ 4741 1a38 B230D3E1 		ldrh	r3, [r3, #2]
+ 4742 1a3c 4F0053E3 		cmp	r3, #79
+ 4743 1a40 0E00009A 		bls	.L143
+ 4744              		.loc 1 656 0 is_stmt 0 discriminator 1
+ 4745 1a44 14329FE5 		ldr	r3, .L149
+ 4746 1a48 B430D3E1 		ldrh	r3, [r3, #4]
+ 4747 1a4c 500053E3 		cmp	r3, #80
+ 4748 1a50 0A00009A 		bls	.L143
+ 657:../proyecto.c **** 			&& tsPressedMsg.x < 159 && tsPressedMsg.y < 139) {
+ 4749              		.loc 1 657 0 is_stmt 1
+ 4750 1a54 04329FE5 		ldr	r3, .L149
+ 4751 1a58 B230D3E1 		ldrh	r3, [r3, #2]
+ 4752 1a5c 9E0053E3 		cmp	r3, #158
+ 4753 1a60 0600008A 		bhi	.L143
+ 4754              		.loc 1 657 0 is_stmt 0 discriminator 1
+ 4755 1a64 F4319FE5 		ldr	r3, .L149
+ 4756 1a68 B430D3E1 		ldrh	r3, [r3, #4]
+ 4757 1a6c 8A0053E3 		cmp	r3, #138
+ 4758 1a70 0200008A 		bhi	.L143
+ 658:../proyecto.c **** 		sol = 2;
+ 4759              		.loc 1 658 0 is_stmt 1
+ 4760 1a74 0230A0E3 		mov	r3, #2
+ 4761 1a78 0D304BE5 		strb	r3, [fp, #-13]
+ 4762 1a7c 720000EA 		b	.L142
+ 4763              	.L143:
+ 659:../proyecto.c **** 	} else if (tsPressedMsg.x > 159 && tsPressedMsg.y > 80
+ 4764              		.loc 1 659 0
+ 4765 1a80 D8319FE5 		ldr	r3, .L149
+ 4766 1a84 B230D3E1 		ldrh	r3, [r3, #2]
+ 4767 1a88 9F0053E3 		cmp	r3, #159
+ 4768 1a8c 0E00009A 		bls	.L144
+ 4769              		.loc 1 659 0 is_stmt 0 discriminator 1
+ 4770 1a90 C8319FE5 		ldr	r3, .L149
+ 4771 1a94 B430D3E1 		ldrh	r3, [r3, #4]
+ 4772 1a98 500053E3 		cmp	r3, #80
+ 4773 1a9c 0A00009A 		bls	.L144
+ 660:../proyecto.c **** 			&& tsPressedMsg.x < 239 && tsPressedMsg.y < 139) {
+ 4774              		.loc 1 660 0 is_stmt 1
+ 4775 1aa0 B8319FE5 		ldr	r3, .L149
+ 4776 1aa4 B230D3E1 		ldrh	r3, [r3, #2]
+ 4777 1aa8 EE0053E3 		cmp	r3, #238
+ 4778 1aac 0600008A 		bhi	.L144
+ 4779              		.loc 1 660 0 is_stmt 0 discriminator 1
+ 4780 1ab0 A8319FE5 		ldr	r3, .L149
+ 4781 1ab4 B430D3E1 		ldrh	r3, [r3, #4]
+ 4782 1ab8 8A0053E3 		cmp	r3, #138
+ 4783 1abc 0200008A 		bhi	.L144
+ 661:../proyecto.c **** 		sol = 3;
+ 4784              		.loc 1 661 0 is_stmt 1
+ 4785 1ac0 0330A0E3 		mov	r3, #3
+ 4786 1ac4 0D304BE5 		strb	r3, [fp, #-13]
+ 4787 1ac8 5F0000EA 		b	.L142
+ 4788              	.L144:
+ 662:../proyecto.c **** 	} else if (tsPressedMsg.x > 239 && tsPressedMsg.y > 80
+ 4789              		.loc 1 662 0
+ 4790 1acc 8C319FE5 		ldr	r3, .L149
+ 4791 1ad0 B230D3E1 		ldrh	r3, [r3, #2]
+ 4792 1ad4 EF0053E3 		cmp	r3, #239
+ 4793 1ad8 0F00009A 		bls	.L145
+ 4794              		.loc 1 662 0 is_stmt 0 discriminator 1
+ 4795 1adc 7C319FE5 		ldr	r3, .L149
+ 4796 1ae0 B430D3E1 		ldrh	r3, [r3, #4]
+ 4797 1ae4 500053E3 		cmp	r3, #80
+ 4798 1ae8 0B00009A 		bls	.L145
+ 663:../proyecto.c **** 			&& tsPressedMsg.x < 319 && tsPressedMsg.y < 139) {
+ 4799              		.loc 1 663 0 is_stmt 1
+ 4800 1aec 6C319FE5 		ldr	r3, .L149
+ 4801 1af0 B220D3E1 		ldrh	r2, [r3, #2]
+ 4802 1af4 68319FE5 		ldr	r3, .L149+4
+ 4803 1af8 030052E1 		cmp	r2, r3
+ 4804 1afc 0600008A 		bhi	.L145
+ 4805              		.loc 1 663 0 is_stmt 0 discriminator 1
+ 4806 1b00 58319FE5 		ldr	r3, .L149
+ 4807 1b04 B430D3E1 		ldrh	r3, [r3, #4]
+ 4808 1b08 8A0053E3 		cmp	r3, #138
+ 4809 1b0c 0200008A 		bhi	.L145
+ 664:../proyecto.c **** 		sol = 4;
+ 4810              		.loc 1 664 0 is_stmt 1
+ 4811 1b10 0430A0E3 		mov	r3, #4
+ 4812 1b14 0D304BE5 		strb	r3, [fp, #-13]
+ 4813 1b18 4B0000EA 		b	.L142
+ 4814              	.L145:
+ 665:../proyecto.c **** 	} else if (tsPressedMsg.x > 0 && tsPressedMsg.y > 139 && tsPressedMsg.x < 79
+ 4815              		.loc 1 665 0
+ 4816 1b1c 3C319FE5 		ldr	r3, .L149
+ 4817 1b20 B230D3E1 		ldrh	r3, [r3, #2]
+ 4818 1b24 000053E3 		cmp	r3, #0
+ 4819 1b28 0E00000A 		beq	.L146
+ 4820              		.loc 1 665 0 is_stmt 0 discriminator 1
+ 4821 1b2c 2C319FE5 		ldr	r3, .L149
+ 4822 1b30 B430D3E1 		ldrh	r3, [r3, #4]
+ 4823 1b34 8B0053E3 		cmp	r3, #139
+ 4824 1b38 0A00009A 		bls	.L146
+ 4825 1b3c 1C319FE5 		ldr	r3, .L149
+ 4826 1b40 B230D3E1 		ldrh	r3, [r3, #2]
+ 4827 1b44 4E0053E3 		cmp	r3, #78
+ 4828 1b48 0600008A 		bhi	.L146
+ 666:../proyecto.c **** 			&& tsPressedMsg.y < 199) {
+ 4829              		.loc 1 666 0 is_stmt 1
+ 4830 1b4c 0C319FE5 		ldr	r3, .L149
+ 4831 1b50 B430D3E1 		ldrh	r3, [r3, #4]
+ 4832 1b54 C60053E3 		cmp	r3, #198
+ 4833 1b58 0200008A 		bhi	.L146
+ 667:../proyecto.c **** 		sol = 5;
+ 4834              		.loc 1 667 0
+ 4835 1b5c 0530A0E3 		mov	r3, #5
+ 4836 1b60 0D304BE5 		strb	r3, [fp, #-13]
+ 4837 1b64 380000EA 		b	.L142
+ 4838              	.L146:
+ 668:../proyecto.c **** 	} else if (tsPressedMsg.x > 79 && tsPressedMsg.y > 139
+ 4839              		.loc 1 668 0
+ 4840 1b68 F0309FE5 		ldr	r3, .L149
+ 4841 1b6c B230D3E1 		ldrh	r3, [r3, #2]
+ 4842 1b70 4F0053E3 		cmp	r3, #79
+ 4843 1b74 0E00009A 		bls	.L147
+ 4844              		.loc 1 668 0 is_stmt 0 discriminator 1
+ 4845 1b78 E0309FE5 		ldr	r3, .L149
+ 4846 1b7c B430D3E1 		ldrh	r3, [r3, #4]
+ 4847 1b80 8B0053E3 		cmp	r3, #139
+ 4848 1b84 0A00009A 		bls	.L147
+ 669:../proyecto.c **** 			&& tsPressedMsg.x < 159 && tsPressedMsg.y < 199) {
+ 4849              		.loc 1 669 0 is_stmt 1
+ 4850 1b88 D0309FE5 		ldr	r3, .L149
+ 4851 1b8c B230D3E1 		ldrh	r3, [r3, #2]
+ 4852 1b90 9E0053E3 		cmp	r3, #158
+ 4853 1b94 0600008A 		bhi	.L147
+ 4854              		.loc 1 669 0 is_stmt 0 discriminator 1
+ 4855 1b98 C0309FE5 		ldr	r3, .L149
+ 4856 1b9c B430D3E1 		ldrh	r3, [r3, #4]
+ 4857 1ba0 C60053E3 		cmp	r3, #198
+ 4858 1ba4 0200008A 		bhi	.L147
+ 670:../proyecto.c **** 		sol = 6;
+ 4859              		.loc 1 670 0 is_stmt 1
+ 4860 1ba8 0630A0E3 		mov	r3, #6
+ 4861 1bac 0D304BE5 		strb	r3, [fp, #-13]
+ 4862 1bb0 250000EA 		b	.L142
+ 4863              	.L147:
+ 671:../proyecto.c **** 	} else if (tsPressedMsg.x > 159 && tsPressedMsg.y > 139
+ 4864              		.loc 1 671 0
+ 4865 1bb4 A4309FE5 		ldr	r3, .L149
+ 4866 1bb8 B230D3E1 		ldrh	r3, [r3, #2]
+ 4867 1bbc 9F0053E3 		cmp	r3, #159
+ 4868 1bc0 0E00009A 		bls	.L148
+ 4869              		.loc 1 671 0 is_stmt 0 discriminator 1
+ 4870 1bc4 94309FE5 		ldr	r3, .L149
+ 4871 1bc8 B430D3E1 		ldrh	r3, [r3, #4]
+ 4872 1bcc 8B0053E3 		cmp	r3, #139
+ 4873 1bd0 0A00009A 		bls	.L148
+ 672:../proyecto.c **** 			&& tsPressedMsg.x < 239 && tsPressedMsg.y < 199) {
+ 4874              		.loc 1 672 0 is_stmt 1
+ 4875 1bd4 84309FE5 		ldr	r3, .L149
+ 4876 1bd8 B230D3E1 		ldrh	r3, [r3, #2]
+ 4877 1bdc EE0053E3 		cmp	r3, #238
+ 4878 1be0 0600008A 		bhi	.L148
+ 4879              		.loc 1 672 0 is_stmt 0 discriminator 1
+ 4880 1be4 74309FE5 		ldr	r3, .L149
+ 4881 1be8 B430D3E1 		ldrh	r3, [r3, #4]
+ 4882 1bec C60053E3 		cmp	r3, #198
+ 4883 1bf0 0200008A 		bhi	.L148
+ 673:../proyecto.c **** 		sol = 7;
+ 4884              		.loc 1 673 0 is_stmt 1
+ 4885 1bf4 0730A0E3 		mov	r3, #7
+ 4886 1bf8 0D304BE5 		strb	r3, [fp, #-13]
+ 4887 1bfc 120000EA 		b	.L142
+ 4888              	.L148:
+ 674:../proyecto.c **** 	} else if (tsPressedMsg.x > 239 && tsPressedMsg.y > 139
+ 4889              		.loc 1 674 0
+ 4890 1c00 58309FE5 		ldr	r3, .L149
+ 4891 1c04 B230D3E1 		ldrh	r3, [r3, #2]
+ 4892 1c08 EF0053E3 		cmp	r3, #239
+ 4893 1c0c 0E00009A 		bls	.L142
+ 4894              		.loc 1 674 0 is_stmt 0 discriminator 1
+ 4895 1c10 48309FE5 		ldr	r3, .L149
+ 4896 1c14 B430D3E1 		ldrh	r3, [r3, #4]
+ 4897 1c18 8B0053E3 		cmp	r3, #139
+ 4898 1c1c 0A00009A 		bls	.L142
+ 675:../proyecto.c **** 			&& tsPressedMsg.x < 319 && tsPressedMsg.y < 199) {
+ 4899              		.loc 1 675 0 is_stmt 1
+ 4900 1c20 38309FE5 		ldr	r3, .L149
+ 4901 1c24 B220D3E1 		ldrh	r2, [r3, #2]
+ 4902 1c28 34309FE5 		ldr	r3, .L149+4
+ 4903 1c2c 030052E1 		cmp	r2, r3
+ 4904 1c30 0500008A 		bhi	.L142
+ 4905              		.loc 1 675 0 is_stmt 0 discriminator 1
+ 4906 1c34 24309FE5 		ldr	r3, .L149
+ 4907 1c38 B430D3E1 		ldrh	r3, [r3, #4]
+ 4908 1c3c C60053E3 		cmp	r3, #198
+ 4909 1c40 0100008A 		bhi	.L142
+ 676:../proyecto.c **** 		sol = 8;
+ 4910              		.loc 1 676 0 is_stmt 1
+ 4911 1c44 0830A0E3 		mov	r3, #8
+ 4912 1c48 0D304BE5 		strb	r3, [fp, #-13]
+ 4913              	.L142:
+ 677:../proyecto.c **** 	}
+ 678:../proyecto.c **** 	return sol;
+ 4914              		.loc 1 678 0
+ 4915 1c4c 0D305BE5 		ldrb	r3, [fp, #-13]	@ zero_extendqisi2
+ 679:../proyecto.c **** }
+ 4916              		.loc 1 679 0
+ 4917 1c50 0300A0E1 		mov	r0, r3
+ 4918 1c54 0CD04BE2 		sub	sp, fp, #12
+ 4919 1c58 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 4920 1c5c 1EFF2FE1 		bx	lr
+ 4921              	.L150:
+ 4922              		.align	2
+ 4923              	.L149:
+ 4924 1c60 00000000 		.word	tsPressedMsg
+ 4925 1c64 3E010000 		.word	318
+ 4926              		.cfi_endproc
+ 4927              	.LFE15:
+ 4929              		.section	.rodata
+ 4930              		.align	2
+ 4931              	.LC37:
+ 4932 0228 54415249 		.ascii	"TARIFA:\000"
+ 4932      46413A00 
+ 4933              		.align	2
+ 4934              	.LC38:
+ 4935 0230 50726563 		.ascii	"Precio por minuto: 0,01\000"
+ 4935      696F2070 
+ 4935      6F72206D 
+ 4935      696E7574 
+ 4935      6F3A2030 
+ 4936              		.align	2
+ 4937              	.LC39:
+ 4938 0248 45737461 		.ascii	"Estancia Minima: 20 minutos\000"
+ 4938      6E636961 
+ 4938      204D696E 
+ 4938      696D613A 
+ 4938      20323020 
+ 4939              		.align	2
+ 4940              	.LC40:
+ 4941 0264 45737461 		.ascii	"Estancia Maxima: 240 minutos\000"
+ 4941      6E636961 
+ 4941      204D6178 
+ 4941      696D613A 
+ 4941      20323430 
+ 4942 0281 000000   		.align	2
+ 4943              	.LC41:
+ 4944 0284 43726564 		.ascii	"Credito: \000"
+ 4944      69746F3A 
+ 4944      2000
+ 4945 028e 0000     		.align	2
+ 4946              	.LC42:
+ 4947 0290 46696E3A 		.ascii	"Fin:\000"
+ 4947      00
+ 4948 0295 000000   		.align	2
+ 4949              	.LC43:
+ 4950 0298 496E7365 		.ascii	"Inserte monedas\000"
+ 4950      72746520 
+ 4950      6D6F6E65 
+ 4950      64617300 
+ 4951              		.align	2
+ 4952              	.LC44:
+ 4953 02a8 50756C73 		.ascii	"Pulse pantalla para aceptar\000"
+ 4953      65207061 
+ 4953      6E74616C 
+ 4953      6C612070 
+ 4953      61726120 
+ 4954              		.align	2
+ 4955              	.LC45:
+ 4956 02c4 54415249 		.ascii	"TARIFF:\000"
+ 4956      46463A00 
+ 4957              		.align	2
+ 4958              	.LC46:
+ 4959 02cc 50726963 		.ascii	"Price per minute: 0,01\000"
+ 4959      65207065 
+ 4959      72206D69 
+ 4959      6E757465 
+ 4959      3A20302C 
+ 4960 02e3 00       		.align	2
+ 4961              	.LC47:
+ 4962 02e4 4D696E69 		.ascii	"Minimum Stay: 20 minutes\000"
+ 4962      6D756D20 
+ 4962      53746179 
+ 4962      3A203230 
+ 4962      206D696E 
+ 4963 02fd 000000   		.align	2
+ 4964              	.LC48:
+ 4965 0300 4D617869 		.ascii	"Maximum Stay: 240 minutes\000"
+ 4965      6D756D20 
+ 4965      53746179 
+ 4965      3A203234 
+ 4965      30206D69 
+ 4966 031a 0000     		.align	2
+ 4967              	.LC49:
+ 4968 031c 5061726B 		.ascii	"Parking space: \000"
+ 4968      696E6720 
+ 4968      73706163 
+ 4968      653A2000 
+ 4969              		.align	2
+ 4970              	.LC50:
+ 4971 032c 43726564 		.ascii	"Credit: \000"
+ 4971      69743A20 
+ 4971      00
+ 4972 0335 000000   		.align	2
+ 4973              	.LC51:
+ 4974 0338 456E643A 		.ascii	"End:\000"
+ 4974      00
+ 4975 033d 000000   		.align	2
+ 4976              	.LC52:
+ 4977 0340 496E7365 		.ascii	"Insert coins\000"
+ 4977      72742063 
+ 4977      6F696E73 
+ 4977      00
+ 4978 034d 000000   		.align	2
+ 4979              	.LC53:
+ 4980 0350 50726573 		.ascii	"Press screen to accept\000"
+ 4980      73207363 
+ 4980      7265656E 
+ 4980      20746F20 
+ 4980      61636365 
+ 4981              		.text
+ 4982              		.align	2
+ 4983              		.global	plotPaymentScreen
+ 4985              	plotPaymentScreen:
+ 4986              	.LFB16:
+ 680:../proyecto.c **** 
+ 681:../proyecto.c **** void plotPaymentScreen(uint16 credit) {
+ 4987              		.loc 1 681 0
+ 4988              		.cfi_startproc
+ 4989              		@ Function supports interworking.
+ 4990              		@ args = 0, pretend = 0, frame = 8
+ 4991              		@ frame_needed = 1, uses_anonymous_args = 0
+ 4992 1c68 0DC0A0E1 		mov	ip, sp
+ 4993              	.LCFI32:
+ 4994              		.cfi_def_cfa_register 12
+ 4995 1c6c 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 4996 1c70 04B04CE2 		sub	fp, ip, #4
+ 4997              		.cfi_offset 14, -8
+ 4998              		.cfi_offset 13, -12
+ 4999              		.cfi_offset 11, -16
+ 5000              	.LCFI33:
+ 5001              		.cfi_def_cfa 11, 4
+ 5002 1c74 10D04DE2 		sub	sp, sp, #16
+ 5003 1c78 0030A0E1 		mov	r3, r0
+ 5004 1c7c BE304BE1 		strh	r3, [fp, #-14]	@ movhi
+ 682:../proyecto.c **** 	if (parking.espanol) {
+ 5005              		.loc 1 682 0
+ 5006 1c80 F8319FE5 		ldr	r3, .L154
+ 5007 1c84 4230D3E5 		ldrb	r3, [r3, #66]	@ zero_extendqisi2
+ 5008 1c88 000053E3 		cmp	r3, #0
+ 5009 1c8c 3C00000A 		beq	.L152
+ 683:../proyecto.c **** // Mostrar tarifas
+ 684:../proyecto.c **** 		lcd_draw_box(0, 35, LCD_WIDTH - 1, 95, BLACK, 1); // Limpiar área
+ 5010              		.loc 1 684 0
+ 5011 1c90 0F30A0E3 		mov	r3, #15
+ 5012 1c94 00308DE5 		str	r3, [sp, #0]
+ 5013 1c98 0130A0E3 		mov	r3, #1
+ 5014 1c9c 04308DE5 		str	r3, [sp, #4]
+ 5015 1ca0 0000A0E3 		mov	r0, #0
+ 5016 1ca4 2310A0E3 		mov	r1, #35
+ 5017 1ca8 D4219FE5 		ldr	r2, .L154+4
+ 5018 1cac 5F30A0E3 		mov	r3, #95
+ 5019 1cb0 FEFFFFEB 		bl	lcd_draw_box
+ 685:../proyecto.c **** 		lcd_puts(110, 30, BLACK, "TARIFA:");
+ 5020              		.loc 1 685 0
+ 5021 1cb4 6E00A0E3 		mov	r0, #110
+ 5022 1cb8 1E10A0E3 		mov	r1, #30
+ 5023 1cbc 0F20A0E3 		mov	r2, #15
+ 5024 1cc0 C0319FE5 		ldr	r3, .L154+8
+ 5025 1cc4 FEFFFFEB 		bl	lcd_puts
+ 686:../proyecto.c **** 		lcd_puts(45, 45, BLACK, "Precio por minuto: 0,01");
+ 5026              		.loc 1 686 0
+ 5027 1cc8 2D00A0E3 		mov	r0, #45
+ 5028 1ccc 2D10A0E3 		mov	r1, #45
+ 5029 1cd0 0F20A0E3 		mov	r2, #15
+ 5030 1cd4 B0319FE5 		ldr	r3, .L154+12
+ 5031 1cd8 FEFFFFEB 		bl	lcd_puts
+ 687:../proyecto.c **** 		lcd_puts(35, 60, BLACK, "Estancia Minima: 20 minutos");
+ 5032              		.loc 1 687 0
+ 5033 1cdc 2300A0E3 		mov	r0, #35
+ 5034 1ce0 3C10A0E3 		mov	r1, #60
+ 5035 1ce4 0F20A0E3 		mov	r2, #15
+ 5036 1ce8 A0319FE5 		ldr	r3, .L154+16
+ 5037 1cec FEFFFFEB 		bl	lcd_puts
+ 688:../proyecto.c **** 		lcd_puts(35, 75, BLACK, "Estancia Maxima: 240 minutos");
+ 5038              		.loc 1 688 0
+ 5039 1cf0 2300A0E3 		mov	r0, #35
+ 5040 1cf4 4B10A0E3 		mov	r1, #75
+ 5041 1cf8 0F20A0E3 		mov	r2, #15
+ 5042 1cfc 90319FE5 		ldr	r3, .L154+20
+ 5043 1d00 FEFFFFEB 		bl	lcd_puts
+ 689:../proyecto.c **** 
+ 690:../proyecto.c **** 		lcd_puts_x2(80, 110, BLACK, "Plaza: ");
+ 5044              		.loc 1 690 0
+ 5045 1d04 5000A0E3 		mov	r0, #80
+ 5046 1d08 6E10A0E3 		mov	r1, #110
+ 5047 1d0c 0F20A0E3 		mov	r2, #15
+ 5048 1d10 80319FE5 		ldr	r3, .L154+24
+ 5049 1d14 FEFFFFEB 		bl	lcd_puts_x2
+ 691:../proyecto.c **** 		lcd_putint_x2(200, 110, BLACK, plazaSelecc);
+ 5050              		.loc 1 691 0
+ 5051 1d18 7C319FE5 		ldr	r3, .L154+28
+ 5052 1d1c 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5053 1d20 C800A0E3 		mov	r0, #200
+ 5054 1d24 6E10A0E3 		mov	r1, #110
+ 5055 1d28 0F20A0E3 		mov	r2, #15
+ 5056 1d2c FEFFFFEB 		bl	lcd_putint_x2
+ 692:../proyecto.c **** 		lcd_puts(80, 140, BLACK, "Credito: ");
+ 5057              		.loc 1 692 0
+ 5058 1d30 5000A0E3 		mov	r0, #80
+ 5059 1d34 8C10A0E3 		mov	r1, #140
+ 5060 1d38 0F20A0E3 		mov	r2, #15
+ 5061 1d3c 5C319FE5 		ldr	r3, .L154+32
+ 5062 1d40 FEFFFFEB 		bl	lcd_puts
+ 693:../proyecto.c **** 
+ 694:../proyecto.c **** // Mostrar fecha y hora de liberación
+ 695:../proyecto.c **** 		lcd_puts(50, 155, BLACK, "Fin:");
+ 5063              		.loc 1 695 0
+ 5064 1d44 3200A0E3 		mov	r0, #50
+ 5065 1d48 9B10A0E3 		mov	r1, #155
+ 5066 1d4c 0F20A0E3 		mov	r2, #15
+ 5067 1d50 4C319FE5 		ldr	r3, .L154+36
+ 5068 1d54 FEFFFFEB 		bl	lcd_puts
+ 696:../proyecto.c **** 
+ 697:../proyecto.c **** // Instrucciones
+ 698:../proyecto.c **** 		lcd_puts(80, 190, BLACK, "Inserte monedas");
+ 5069              		.loc 1 698 0
+ 5070 1d58 5000A0E3 		mov	r0, #80
+ 5071 1d5c BE10A0E3 		mov	r1, #190
+ 5072 1d60 0F20A0E3 		mov	r2, #15
+ 5073 1d64 3C319FE5 		ldr	r3, .L154+40
+ 5074 1d68 FEFFFFEB 		bl	lcd_puts
+ 699:../proyecto.c **** 		lcd_puts(50, 210, BLACK, "Pulse pantalla para aceptar");
+ 5075              		.loc 1 699 0
+ 5076 1d6c 3200A0E3 		mov	r0, #50
+ 5077 1d70 D210A0E3 		mov	r1, #210
+ 5078 1d74 0F20A0E3 		mov	r2, #15
+ 5079 1d78 2C319FE5 		ldr	r3, .L154+44
+ 5080 1d7c FEFFFFEB 		bl	lcd_puts
+ 5081 1d80 3B0000EA 		b	.L151
+ 5082              	.L152:
+ 700:../proyecto.c **** 	} else {
+ 701:../proyecto.c **** 		lcd_draw_box(0, 35, LCD_WIDTH - 1, 95, BLACK, 1);
+ 5083              		.loc 1 701 0
+ 5084 1d84 0F30A0E3 		mov	r3, #15
+ 5085 1d88 00308DE5 		str	r3, [sp, #0]
+ 5086 1d8c 0130A0E3 		mov	r3, #1
+ 5087 1d90 04308DE5 		str	r3, [sp, #4]
+ 5088 1d94 0000A0E3 		mov	r0, #0
+ 5089 1d98 2310A0E3 		mov	r1, #35
+ 5090 1d9c E0209FE5 		ldr	r2, .L154+4
+ 5091 1da0 5F30A0E3 		mov	r3, #95
+ 5092 1da4 FEFFFFEB 		bl	lcd_draw_box
+ 702:../proyecto.c **** 		lcd_puts(110, 30, BLACK, "TARIFF:");
+ 5093              		.loc 1 702 0
+ 5094 1da8 6E00A0E3 		mov	r0, #110
+ 5095 1dac 1E10A0E3 		mov	r1, #30
+ 5096 1db0 0F20A0E3 		mov	r2, #15
+ 5097 1db4 F4309FE5 		ldr	r3, .L154+48
+ 5098 1db8 FEFFFFEB 		bl	lcd_puts
+ 703:../proyecto.c **** 		lcd_puts(45, 45, BLACK, "Price per minute: 0,01");
+ 5099              		.loc 1 703 0
+ 5100 1dbc 2D00A0E3 		mov	r0, #45
+ 5101 1dc0 2D10A0E3 		mov	r1, #45
+ 5102 1dc4 0F20A0E3 		mov	r2, #15
+ 5103 1dc8 E4309FE5 		ldr	r3, .L154+52
+ 5104 1dcc FEFFFFEB 		bl	lcd_puts
+ 704:../proyecto.c **** 		lcd_puts(35, 60, BLACK, "Minimum Stay: 20 minutes");
+ 5105              		.loc 1 704 0
+ 5106 1dd0 2300A0E3 		mov	r0, #35
+ 5107 1dd4 3C10A0E3 		mov	r1, #60
+ 5108 1dd8 0F20A0E3 		mov	r2, #15
+ 5109 1ddc D4309FE5 		ldr	r3, .L154+56
+ 5110 1de0 FEFFFFEB 		bl	lcd_puts
+ 705:../proyecto.c **** 		lcd_puts(35, 75, BLACK, "Maximum Stay: 240 minutes");
+ 5111              		.loc 1 705 0
+ 5112 1de4 2300A0E3 		mov	r0, #35
+ 5113 1de8 4B10A0E3 		mov	r1, #75
+ 5114 1dec 0F20A0E3 		mov	r2, #15
+ 5115 1df0 C4309FE5 		ldr	r3, .L154+60
+ 5116 1df4 FEFFFFEB 		bl	lcd_puts
+ 706:../proyecto.c **** 
+ 707:../proyecto.c **** 		lcd_puts_x2(30, 110, BLACK, "Parking space: ");
+ 5117              		.loc 1 707 0
+ 5118 1df8 1E00A0E3 		mov	r0, #30
+ 5119 1dfc 6E10A0E3 		mov	r1, #110
+ 5120 1e00 0F20A0E3 		mov	r2, #15
+ 5121 1e04 B4309FE5 		ldr	r3, .L154+64
+ 5122 1e08 FEFFFFEB 		bl	lcd_puts_x2
+ 708:../proyecto.c **** 		lcd_putint_x2(260, 110, BLACK, plazaSelecc);
+ 5123              		.loc 1 708 0
+ 5124 1e0c 88309FE5 		ldr	r3, .L154+28
+ 5125 1e10 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5126 1e14 410FA0E3 		mov	r0, #260
+ 5127 1e18 6E10A0E3 		mov	r1, #110
+ 5128 1e1c 0F20A0E3 		mov	r2, #15
+ 5129 1e20 FEFFFFEB 		bl	lcd_putint_x2
+ 709:../proyecto.c **** 		lcd_puts(80, 140, BLACK, "Credit: ");
+ 5130              		.loc 1 709 0
+ 5131 1e24 5000A0E3 		mov	r0, #80
+ 5132 1e28 8C10A0E3 		mov	r1, #140
+ 5133 1e2c 0F20A0E3 		mov	r2, #15
+ 5134 1e30 8C309FE5 		ldr	r3, .L154+68
+ 5135 1e34 FEFFFFEB 		bl	lcd_puts
+ 710:../proyecto.c **** 
+ 711:../proyecto.c **** 		lcd_puts(50, 155, BLACK, "End:");
+ 5136              		.loc 1 711 0
+ 5137 1e38 3200A0E3 		mov	r0, #50
+ 5138 1e3c 9B10A0E3 		mov	r1, #155
+ 5139 1e40 0F20A0E3 		mov	r2, #15
+ 5140 1e44 7C309FE5 		ldr	r3, .L154+72
+ 5141 1e48 FEFFFFEB 		bl	lcd_puts
+ 712:../proyecto.c **** 
+ 713:../proyecto.c **** 		lcd_puts(80, 190, BLACK, "Insert coins");
+ 5142              		.loc 1 713 0
+ 5143 1e4c 5000A0E3 		mov	r0, #80
+ 5144 1e50 BE10A0E3 		mov	r1, #190
+ 5145 1e54 0F20A0E3 		mov	r2, #15
+ 5146 1e58 6C309FE5 		ldr	r3, .L154+76
+ 5147 1e5c FEFFFFEB 		bl	lcd_puts
+ 714:../proyecto.c **** 		lcd_puts(50, 210, BLACK, "Press screen to accept");
+ 5148              		.loc 1 714 0
+ 5149 1e60 3200A0E3 		mov	r0, #50
+ 5150 1e64 D210A0E3 		mov	r1, #210
+ 5151 1e68 0F20A0E3 		mov	r2, #15
+ 5152 1e6c 5C309FE5 		ldr	r3, .L154+80
+ 5153 1e70 FEFFFFEB 		bl	lcd_puts
+ 5154              	.L151:
+ 715:../proyecto.c **** 	}
+ 716:../proyecto.c **** }
+ 5155              		.loc 1 716 0
+ 5156 1e74 0CD04BE2 		sub	sp, fp, #12
+ 5157 1e78 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 5158 1e7c 1EFF2FE1 		bx	lr
+ 5159              	.L155:
+ 5160              		.align	2
+ 5161              	.L154:
+ 5162 1e80 00000000 		.word	parking
+ 5163 1e84 3F010000 		.word	319
+ 5164 1e88 28020000 		.word	.LC37
+ 5165 1e8c 30020000 		.word	.LC38
+ 5166 1e90 48020000 		.word	.LC39
+ 5167 1e94 64020000 		.word	.LC40
+ 5168 1e98 60000000 		.word	.LC8
+ 5169 1e9c 00000000 		.word	plazaSelecc
+ 5170 1ea0 84020000 		.word	.LC41
+ 5171 1ea4 90020000 		.word	.LC42
+ 5172 1ea8 98020000 		.word	.LC43
+ 5173 1eac A8020000 		.word	.LC44
+ 5174 1eb0 C4020000 		.word	.LC45
+ 5175 1eb4 CC020000 		.word	.LC46
+ 5176 1eb8 E4020000 		.word	.LC47
+ 5177 1ebc 00030000 		.word	.LC48
+ 5178 1ec0 1C030000 		.word	.LC49
+ 5179 1ec4 2C030000 		.word	.LC50
+ 5180 1ec8 38030000 		.word	.LC51
+ 5181 1ecc 40030000 		.word	.LC52
+ 5182 1ed0 50030000 		.word	.LC53
+ 5183              		.cfi_endproc
+ 5184              	.LFE16:
+ 5186              		.align	2
+ 5187              		.global	liberar
+ 5189              	liberar:
+ 5190              	.LFB17:
+ 717:../proyecto.c **** 
+ 718:../proyecto.c **** void liberar(void) {
+ 5191              		.loc 1 718 0
+ 5192              		.cfi_startproc
+ 5193              		@ Function supports interworking.
+ 5194              		@ args = 0, pretend = 0, frame = 0
+ 5195              		@ frame_needed = 1, uses_anonymous_args = 0
+ 5196 1ed4 0DC0A0E1 		mov	ip, sp
+ 5197              	.LCFI34:
+ 5198              		.cfi_def_cfa_register 12
+ 5199 1ed8 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 5200 1edc 04B04CE2 		sub	fp, ip, #4
+ 5201              		.cfi_offset 14, -8
+ 5202              		.cfi_offset 13, -12
+ 5203              		.cfi_offset 11, -16
+ 5204              	.LCFI35:
+ 5205              		.cfi_def_cfa 11, 4
+ 719:../proyecto.c **** 	static rtc_time_t tiempoActual; // Estructura para guardar el tiempo actual
+ 720:../proyecto.c **** 
+ 721:../proyecto.c **** 	rtc_gettime(&tiempoActual);
+ 5206              		.loc 1 721 0
+ 5207 1ee0 30019FE5 		ldr	r0, .L159
+ 5208 1ee4 FEFFFFEB 		bl	rtc_gettime
+ 722:../proyecto.c **** 
+ 723:../proyecto.c **** 	if (tsPressedMsg.x > 80 && tsPressedMsg.y > 50 && tsPressedMsg.x < 250
+ 5209              		.loc 1 723 0
+ 5210 1ee8 2C319FE5 		ldr	r3, .L159+4
+ 5211 1eec B230D3E1 		ldrh	r3, [r3, #2]
+ 5212 1ef0 500053E3 		cmp	r3, #80
+ 5213 1ef4 4400009A 		bls	.L156
+ 5214              		.loc 1 723 0 is_stmt 0 discriminator 1
+ 5215 1ef8 1C319FE5 		ldr	r3, .L159+4
+ 5216 1efc B430D3E1 		ldrh	r3, [r3, #4]
+ 5217 1f00 320053E3 		cmp	r3, #50
+ 5218 1f04 4000009A 		bls	.L156
+ 5219 1f08 0C319FE5 		ldr	r3, .L159+4
+ 5220 1f0c B230D3E1 		ldrh	r3, [r3, #2]
+ 5221 1f10 F90053E3 		cmp	r3, #249
+ 5222 1f14 3C00008A 		bhi	.L156
+ 724:../proyecto.c **** 			&& tsPressedMsg.y < 95) {
+ 5223              		.loc 1 724 0 is_stmt 1
+ 5224 1f18 FC309FE5 		ldr	r3, .L159+4
+ 5225 1f1c B430D3E1 		ldrh	r3, [r3, #4]
+ 5226 1f20 5E0053E3 		cmp	r3, #94
+ 5227 1f24 3800008A 		bhi	.L156
+ 725:../proyecto.c **** 
+ 726:../proyecto.c **** 		if (parking.plaza[plazaSelecc - 1].end_time.hour <= tiempoActual.hour
+ 5228              		.loc 1 726 0
+ 5229 1f28 F0309FE5 		ldr	r3, .L159+8
+ 5230 1f2c 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5231 1f30 012043E2 		sub	r2, r3, #1
+ 5232 1f34 E8109FE5 		ldr	r1, .L159+12
+ 5233 1f38 0330A0E3 		mov	r3, #3
+ 5234 1f3c 8221A0E1 		mov	r2, r2, asl #3
+ 5235 1f40 022081E0 		add	r2, r1, r2
+ 5236 1f44 033082E0 		add	r3, r2, r3
+ 5237 1f48 0020D3E5 		ldrb	r2, [r3, #0]	@ zero_extendqisi2
+ 5238 1f4c C4309FE5 		ldr	r3, .L159
+ 5239 1f50 0230D3E5 		ldrb	r3, [r3, #2]	@ zero_extendqisi2
+ 5240 1f54 030052E1 		cmp	r2, r3
+ 5241 1f58 1F00008A 		bhi	.L158
+ 727:../proyecto.c **** 				&& parking.plaza[plazaSelecc - 1].end_time.min
+ 5242              		.loc 1 727 0
+ 5243 1f5c BC309FE5 		ldr	r3, .L159+8
+ 5244 1f60 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5245 1f64 012043E2 		sub	r2, r3, #1
+ 5246 1f68 B4109FE5 		ldr	r1, .L159+12
+ 5247 1f6c 0230A0E3 		mov	r3, #2
+ 5248 1f70 8221A0E1 		mov	r2, r2, asl #3
+ 5249 1f74 022081E0 		add	r2, r1, r2
+ 5250 1f78 033082E0 		add	r3, r2, r3
+ 5251 1f7c 0020D3E5 		ldrb	r2, [r3, #0]	@ zero_extendqisi2
+ 728:../proyecto.c **** 						<= tiempoActual.min
+ 5252              		.loc 1 728 0
+ 5253 1f80 90309FE5 		ldr	r3, .L159
+ 5254 1f84 0130D3E5 		ldrb	r3, [r3, #1]	@ zero_extendqisi2
+ 727:../proyecto.c **** 				&& parking.plaza[plazaSelecc - 1].end_time.min
+ 5255              		.loc 1 727 0
+ 5256 1f88 030052E1 		cmp	r2, r3
+ 5257 1f8c 1200008A 		bhi	.L158
+ 729:../proyecto.c **** 				&& parking.plaza[plazaSelecc - 1].end_time.sec
+ 5258              		.loc 1 729 0
+ 5259 1f90 88309FE5 		ldr	r3, .L159+8
+ 5260 1f94 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5261 1f98 012043E2 		sub	r2, r3, #1
+ 5262 1f9c 80109FE5 		ldr	r1, .L159+12
+ 5263 1fa0 0130A0E3 		mov	r3, #1
+ 5264 1fa4 8221A0E1 		mov	r2, r2, asl #3
+ 5265 1fa8 022081E0 		add	r2, r1, r2
+ 5266 1fac 033082E0 		add	r3, r2, r3
+ 5267 1fb0 0020D3E5 		ldrb	r2, [r3, #0]	@ zero_extendqisi2
+ 730:../proyecto.c **** 						<= tiempoActual.sec) {
+ 5268              		.loc 1 730 0
+ 5269 1fb4 5C309FE5 		ldr	r3, .L159
+ 5270 1fb8 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 729:../proyecto.c **** 				&& parking.plaza[plazaSelecc - 1].end_time.sec
+ 5271              		.loc 1 729 0
+ 5272 1fbc 030052E1 		cmp	r2, r3
+ 5273 1fc0 0500008A 		bhi	.L158
+ 731:../proyecto.c **** 			multar(plazaSelecc - 1);
+ 5274              		.loc 1 731 0
+ 5275 1fc4 54309FE5 		ldr	r3, .L159+8
+ 5276 1fc8 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5277 1fcc 013043E2 		sub	r3, r3, #1
+ 5278 1fd0 FF3003E2 		and	r3, r3, #255
+ 5279 1fd4 0300A0E1 		mov	r0, r3
+ 5280 1fd8 FEFFFFEB 		bl	multar
+ 5281              	.L158:
+ 732:../proyecto.c **** 
+ 733:../proyecto.c **** 		}
+ 734:../proyecto.c **** 		parking.plaza[plazaSelecc - 1].occupied = FALSE;
+ 5282              		.loc 1 734 0
+ 5283 1fdc 3C309FE5 		ldr	r3, .L159+8
+ 5284 1fe0 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5285 1fe4 012043E2 		sub	r2, r3, #1
+ 5286 1fe8 34309FE5 		ldr	r3, .L159+12
+ 5287 1fec 0010A0E3 		mov	r1, #0
+ 5288 1ff0 8211C3E7 		strb	r1, [r3, r2, asl #3]
+ 735:../proyecto.c **** 		parking.plazasLibres++;
+ 5289              		.loc 1 735 0
+ 5290 1ff4 28309FE5 		ldr	r3, .L159+12
+ 5291 1ff8 4330D3E5 		ldrb	r3, [r3, #67]	@ zero_extendqisi2
+ 5292 1ffc 013083E2 		add	r3, r3, #1
+ 5293 2000 FF2003E2 		and	r2, r3, #255
+ 5294 2004 18309FE5 		ldr	r3, .L159+12
+ 5295 2008 4320C3E5 		strb	r2, [r3, #67]
+ 5296              	.L156:
+ 736:../proyecto.c **** 	}
+ 737:../proyecto.c **** }
+ 5297              		.loc 1 737 0
+ 5298 200c 0CD04BE2 		sub	sp, fp, #12
+ 5299 2010 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 5300 2014 1EFF2FE1 		bx	lr
+ 5301              	.L160:
+ 5302              		.align	2
+ 5303              	.L159:
+ 5304 2018 00000000 		.word	tiempoActual.4383
+ 5305 201c 00000000 		.word	tsPressedMsg
+ 5306 2020 00000000 		.word	plazaSelecc
+ 5307 2024 00000000 		.word	parking
+ 5308              		.cfi_endproc
+ 5309              	.LFE17:
+ 5311              		.section	.rodata
+ 5312 0367 00       		.align	2
+ 5313              	.LC54:
+ 5314 0368 4C494245 		.ascii	"LIBERAR\000"
+ 5314      52415200 
+ 5315              		.align	2
+ 5316              	.LC55:
+ 5317 0370 506C617A 		.ascii	"Plaza \000"
+ 5317      612000
+ 5318 0377 00       		.align	2
+ 5319              	.LC56:
+ 5320 0378 206F6375 		.ascii	" ocupada \000"
+ 5320      70616461 
+ 5320      2000
+ 5321 0382 0000     		.align	2
+ 5322              	.LC57:
+ 5323 0384 46524545 		.ascii	"FREE\000"
+ 5323      00
+ 5324 0389 000000   		.align	2
+ 5325              	.LC58:
+ 5326 038c 506C6163 		.ascii	"Place \000"
+ 5326      652000
+ 5327 0393 00       		.align	2
+ 5328              	.LC59:
+ 5329 0394 204F6363 		.ascii	" Occupied \000"
+ 5329      75706965 
+ 5329      642000
+ 5330              		.text
+ 5331              		.align	2
+ 5332              		.global	plotOccupiedScreen
+ 5334              	plotOccupiedScreen:
+ 5335              	.LFB18:
+ 738:../proyecto.c **** 
+ 739:../proyecto.c **** void plotOccupiedScreen(uint16 credit) {
+ 5336              		.loc 1 739 0
+ 5337              		.cfi_startproc
+ 5338              		@ Function supports interworking.
+ 5339              		@ args = 0, pretend = 0, frame = 64
+ 5340              		@ frame_needed = 1, uses_anonymous_args = 0
+ 5341 2028 0DC0A0E1 		mov	ip, sp
+ 5342              	.LCFI36:
+ 5343              		.cfi_def_cfa_register 12
+ 5344 202c 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 5345 2030 04B04CE2 		sub	fp, ip, #4
+ 5346              		.cfi_offset 14, -8
+ 5347              		.cfi_offset 13, -12
+ 5348              		.cfi_offset 11, -16
+ 5349              	.LCFI37:
+ 5350              		.cfi_def_cfa 11, 4
+ 5351 2034 40D04DE2 		sub	sp, sp, #64
+ 5352 2038 0030A0E1 		mov	r3, r0
+ 5353 203c B6344BE1 		strh	r3, [fp, #-70]	@ movhi
+ 740:../proyecto.c **** 	char bufferFechaLiberacion[40];
+ 741:../proyecto.c **** 	char diaSemana[4];
+ 742:../proyecto.c **** 
+ 743:../proyecto.c **** // Convertir la fecha y hora de liberación a cadena
+ 744:../proyecto.c **** 	rtc_time_t end_time = parking.plaza[plazaSelecc - 1].end_time;
+ 5354              		.loc 1 744 0
+ 5355 2040 60319FE5 		ldr	r3, .L164
+ 5356 2044 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5357 2048 012043E2 		sub	r2, r3, #1
+ 5358 204c 58119FE5 		ldr	r1, .L164+4
+ 5359 2050 0130A0E3 		mov	r3, #1
+ 5360 2054 8221A0E1 		mov	r2, r2, asl #3
+ 5361 2058 022081E0 		add	r2, r1, r2
+ 5362 205c 033082E0 		add	r3, r2, r3
+ 5363 2060 40104BE2 		sub	r1, fp, #64
+ 5364 2064 0320A0E1 		mov	r2, r3
+ 5365 2068 0730A0E3 		mov	r3, #7
+ 5366 206c 0100A0E1 		mov	r0, r1
+ 5367 2070 0210A0E1 		mov	r1, r2
+ 5368 2074 0320A0E1 		mov	r2, r3
+ 5369 2078 FEFFFFEB 		bl	memcpy
+ 745:../proyecto.c **** 	convertirFechaHora(end_time, bufferFechaLiberacion, diaSemana);
+ 5370              		.loc 1 745 0
+ 5371 207c 34204BE2 		sub	r2, fp, #52
+ 5372 2080 38304BE2 		sub	r3, fp, #56
+ 5373 2084 40104BE2 		sub	r1, fp, #64
+ 5374 2088 030091E8 		ldmia	r1, {r0, r1}
+ 5375 208c FEFFFFEB 		bl	convertirFechaHora
+ 746:../proyecto.c **** 	if (parking.espanol) {
+ 5376              		.loc 1 746 0
+ 5377 2090 14319FE5 		ldr	r3, .L164+4
+ 5378 2094 4230D3E5 		ldrb	r3, [r3, #66]	@ zero_extendqisi2
+ 5379 2098 000053E3 		cmp	r3, #0
+ 5380 209c 1F00000A 		beq	.L162
+ 747:../proyecto.c **** 		lcd_puts_x2(140, 60, BLACK, "LIBERAR");
+ 5381              		.loc 1 747 0
+ 5382 20a0 8C00A0E3 		mov	r0, #140
+ 5383 20a4 3C10A0E3 		mov	r1, #60
+ 5384 20a8 0F20A0E3 		mov	r2, #15
+ 5385 20ac FC309FE5 		ldr	r3, .L164+8
+ 5386 20b0 FEFFFFEB 		bl	lcd_puts_x2
+ 748:../proyecto.c **** 		lcd_puts_x2(30, 110, BLACK, "Plaza ");
+ 5387              		.loc 1 748 0
+ 5388 20b4 1E00A0E3 		mov	r0, #30
+ 5389 20b8 6E10A0E3 		mov	r1, #110
+ 5390 20bc 0F20A0E3 		mov	r2, #15
+ 5391 20c0 EC309FE5 		ldr	r3, .L164+12
+ 5392 20c4 FEFFFFEB 		bl	lcd_puts_x2
+ 749:../proyecto.c **** 		lcd_putint_x2(120, 110, BLACK, plazaSelecc);
+ 5393              		.loc 1 749 0
+ 5394 20c8 D8309FE5 		ldr	r3, .L164
+ 5395 20cc 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5396 20d0 7800A0E3 		mov	r0, #120
+ 5397 20d4 6E10A0E3 		mov	r1, #110
+ 5398 20d8 0F20A0E3 		mov	r2, #15
+ 5399 20dc FEFFFFEB 		bl	lcd_putint_x2
+ 750:../proyecto.c **** 		lcd_puts_x2(140, 110, BLACK, " ocupada ");
+ 5400              		.loc 1 750 0
+ 5401 20e0 8C00A0E3 		mov	r0, #140
+ 5402 20e4 6E10A0E3 		mov	r1, #110
+ 5403 20e8 0F20A0E3 		mov	r2, #15
+ 5404 20ec C4309FE5 		ldr	r3, .L164+16
+ 5405 20f0 FEFFFFEB 		bl	lcd_puts_x2
+ 751:../proyecto.c **** // Mostrar fecha y hora de liberación
+ 752:../proyecto.c **** 		lcd_puts(60, 150, BLACK, "Fin:");
+ 5406              		.loc 1 752 0
+ 5407 20f4 3C00A0E3 		mov	r0, #60
+ 5408 20f8 9610A0E3 		mov	r1, #150
+ 5409 20fc 0F20A0E3 		mov	r2, #15
+ 5410 2100 B4309FE5 		ldr	r3, .L164+20
+ 5411 2104 FEFFFFEB 		bl	lcd_puts
+ 753:../proyecto.c **** 		lcd_puts(110, 150, BLACK, bufferFechaLiberacion);
+ 5412              		.loc 1 753 0
+ 5413 2108 34304BE2 		sub	r3, fp, #52
+ 5414 210c 6E00A0E3 		mov	r0, #110
+ 5415 2110 9610A0E3 		mov	r1, #150
+ 5416 2114 0F20A0E3 		mov	r2, #15
+ 5417 2118 FEFFFFEB 		bl	lcd_puts
+ 5418 211c 1E0000EA 		b	.L161
+ 5419              	.L162:
+ 754:../proyecto.c **** 	} else {
+ 755:../proyecto.c **** 		lcd_puts_x2(140, 60, BLACK, "FREE");
+ 5420              		.loc 1 755 0
+ 5421 2120 8C00A0E3 		mov	r0, #140
+ 5422 2124 3C10A0E3 		mov	r1, #60
+ 5423 2128 0F20A0E3 		mov	r2, #15
+ 5424 212c 8C309FE5 		ldr	r3, .L164+24
+ 5425 2130 FEFFFFEB 		bl	lcd_puts_x2
+ 756:../proyecto.c **** 		lcd_puts_x2(30, 110, BLACK, "Place ");
+ 5426              		.loc 1 756 0
+ 5427 2134 1E00A0E3 		mov	r0, #30
+ 5428 2138 6E10A0E3 		mov	r1, #110
+ 5429 213c 0F20A0E3 		mov	r2, #15
+ 5430 2140 7C309FE5 		ldr	r3, .L164+28
+ 5431 2144 FEFFFFEB 		bl	lcd_puts_x2
+ 757:../proyecto.c **** 		lcd_putint_x2(120, 110, BLACK, plazaSelecc);
+ 5432              		.loc 1 757 0
+ 5433 2148 58309FE5 		ldr	r3, .L164
+ 5434 214c 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5435 2150 7800A0E3 		mov	r0, #120
+ 5436 2154 6E10A0E3 		mov	r1, #110
+ 5437 2158 0F20A0E3 		mov	r2, #15
+ 5438 215c FEFFFFEB 		bl	lcd_putint_x2
+ 758:../proyecto.c **** 		lcd_puts_x2(140, 110, BLACK, " Occupied ");
+ 5439              		.loc 1 758 0
+ 5440 2160 8C00A0E3 		mov	r0, #140
+ 5441 2164 6E10A0E3 		mov	r1, #110
+ 5442 2168 0F20A0E3 		mov	r2, #15
+ 5443 216c 54309FE5 		ldr	r3, .L164+32
+ 5444 2170 FEFFFFEB 		bl	lcd_puts_x2
+ 759:../proyecto.c **** // Mostrar fecha y hora de liberación
+ 760:../proyecto.c **** 		lcd_puts(60, 150, BLACK, "End:");
+ 5445              		.loc 1 760 0
+ 5446 2174 3C00A0E3 		mov	r0, #60
+ 5447 2178 9610A0E3 		mov	r1, #150
+ 5448 217c 0F20A0E3 		mov	r2, #15
+ 5449 2180 44309FE5 		ldr	r3, .L164+36
+ 5450 2184 FEFFFFEB 		bl	lcd_puts
+ 761:../proyecto.c **** 		lcd_puts(110, 150, BLACK, bufferFechaLiberacion);
+ 5451              		.loc 1 761 0
+ 5452 2188 34304BE2 		sub	r3, fp, #52
+ 5453 218c 6E00A0E3 		mov	r0, #110
+ 5454 2190 9610A0E3 		mov	r1, #150
+ 5455 2194 0F20A0E3 		mov	r2, #15
+ 5456 2198 FEFFFFEB 		bl	lcd_puts
+ 5457              	.L161:
+ 762:../proyecto.c **** 	}
+ 763:../proyecto.c **** 
+ 764:../proyecto.c **** }
+ 5458              		.loc 1 764 0
+ 5459 219c 0CD04BE2 		sub	sp, fp, #12
+ 5460 21a0 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 5461 21a4 1EFF2FE1 		bx	lr
+ 5462              	.L165:
+ 5463              		.align	2
+ 5464              	.L164:
+ 5465 21a8 00000000 		.word	plazaSelecc
+ 5466 21ac 00000000 		.word	parking
+ 5467 21b0 68030000 		.word	.LC54
+ 5468 21b4 70030000 		.word	.LC55
+ 5469 21b8 78030000 		.word	.LC56
+ 5470 21bc 90020000 		.word	.LC42
+ 5471 21c0 84030000 		.word	.LC57
+ 5472 21c4 8C030000 		.word	.LC58
+ 5473 21c8 94030000 		.word	.LC59
+ 5474 21cc 38030000 		.word	.LC51
+ 5475              		.cfi_endproc
+ 5476              	.LFE18:
+ 5478              		.align	2
+ 5479              		.global	tiempoOcupado
+ 5481              	tiempoOcupado:
+ 5482              	.LFB19:
+ 765:../proyecto.c **** 
+ 766:../proyecto.c **** void tiempoOcupado(uint16 credit) {
+ 5483              		.loc 1 766 0
+ 5484              		.cfi_startproc
+ 5485              		@ Function supports interworking.
+ 5486              		@ args = 0, pretend = 0, frame = 24
+ 5487              		@ frame_needed = 1, uses_anonymous_args = 0
+ 5488 21d0 0DC0A0E1 		mov	ip, sp
+ 5489              	.LCFI38:
+ 5490              		.cfi_def_cfa_register 12
+ 5491 21d4 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 5492 21d8 04B04CE2 		sub	fp, ip, #4
+ 5493              		.cfi_offset 14, -8
+ 5494              		.cfi_offset 13, -12
+ 5495              		.cfi_offset 11, -16
+ 5496              	.LCFI39:
+ 5497              		.cfi_def_cfa 11, 4
+ 5498 21dc 18D04DE2 		sub	sp, sp, #24
+ 5499 21e0 0030A0E1 		mov	r3, r0
+ 5500 21e4 BE314BE1 		strh	r3, [fp, #-30]	@ movhi
+ 767:../proyecto.c **** 
+ 768:../proyecto.c **** 	rtc_time_t current_time, end_time;
+ 769:../proyecto.c **** 	rtc_gettime(&current_time);
+ 5501              		.loc 1 769 0
+ 5502 21e8 14304BE2 		sub	r3, fp, #20
+ 5503 21ec 0300A0E1 		mov	r0, r3
+ 5504 21f0 FEFFFFEB 		bl	rtc_gettime
+ 770:../proyecto.c **** 
+ 771:../proyecto.c **** 	end_time = current_time;
+ 5505              		.loc 1 771 0
+ 5506 21f4 1C304BE2 		sub	r3, fp, #28
+ 5507 21f8 14204BE2 		sub	r2, fp, #20
+ 5508 21fc 030092E8 		ldmia	r2, {r0, r1}
+ 5509 2200 000083E5 		str	r0, [r3, #0]
+ 5510 2204 043083E2 		add	r3, r3, #4
+ 5511 2208 B010C3E1 		strh	r1, [r3, #0]	@ movhi
+ 5512 220c 023083E2 		add	r3, r3, #2
+ 5513 2210 2128A0E1 		mov	r2, r1, lsr #16
+ 5514 2214 0020C3E5 		strb	r2, [r3, #0]
+ 772:../proyecto.c **** 
+ 773:../proyecto.c **** 	if (credit + end_time.min < 60) {
+ 5515              		.loc 1 773 0
+ 5516 2218 BE215BE1 		ldrh	r2, [fp, #-30]
+ 5517 221c 1B305BE5 		ldrb	r3, [fp, #-27]	@ zero_extendqisi2
+ 5518 2220 033082E0 		add	r3, r2, r3
+ 5519 2224 3B0053E3 		cmp	r3, #59
+ 5520 2228 0B0000CA 		bgt	.L167
+ 774:../proyecto.c **** 		end_time.min += credit/12;
+ 5521              		.loc 1 774 0
+ 5522 222c 1B205BE5 		ldrb	r2, [fp, #-27]	@ zero_extendqisi2
+ 5523 2230 BE115BE1 		ldrh	r1, [fp, #-30]
+ 5524 2234 D4309FE5 		ldr	r3, .L169
+ 5525 2238 910383E0 		umull	r0, r3, r1, r3
+ 5526 223c A331A0E1 		mov	r3, r3, lsr #3
+ 5527 2240 0338A0E1 		mov	r3, r3, asl #16
+ 5528 2244 2338A0E1 		mov	r3, r3, lsr #16
+ 5529 2248 FF3003E2 		and	r3, r3, #255
+ 5530 224c 033082E0 		add	r3, r2, r3
+ 5531 2250 FF3003E2 		and	r3, r3, #255
+ 5532 2254 1B304BE5 		strb	r3, [fp, #-27]
+ 5533 2258 1A0000EA 		b	.L168
+ 5534              	.L167:
+ 775:../proyecto.c **** 	} else {
+ 776:../proyecto.c **** 		end_time.hour = ((credit + end_time.min) / 60);
+ 5535              		.loc 1 776 0
+ 5536 225c BE215BE1 		ldrh	r2, [fp, #-30]
+ 5537 2260 1B305BE5 		ldrb	r3, [fp, #-27]	@ zero_extendqisi2
+ 5538 2264 033082E0 		add	r3, r2, r3
+ 5539 2268 A4209FE5 		ldr	r2, .L169+4
+ 5540 226c 9312C2E0 		smull	r1, r2, r3, r2
+ 5541 2270 032082E0 		add	r2, r2, r3
+ 5542 2274 C222A0E1 		mov	r2, r2, asr #5
+ 5543 2278 C33FA0E1 		mov	r3, r3, asr #31
+ 5544 227c 023063E0 		rsb	r3, r3, r2
+ 5545 2280 FF3003E2 		and	r3, r3, #255
+ 5546 2284 1A304BE5 		strb	r3, [fp, #-26]
+ 777:../proyecto.c **** 		end_time.min = ((credit + end_time.min) % 60);
+ 5547              		.loc 1 777 0
+ 5548 2288 BE215BE1 		ldrh	r2, [fp, #-30]
+ 5549 228c 1B305BE5 		ldrb	r3, [fp, #-27]	@ zero_extendqisi2
+ 5550 2290 031082E0 		add	r1, r2, r3
+ 5551 2294 78309FE5 		ldr	r3, .L169+4
+ 5552 2298 9123C3E0 		smull	r2, r3, r1, r3
+ 5553 229c 013083E0 		add	r3, r3, r1
+ 5554 22a0 C322A0E1 		mov	r2, r3, asr #5
+ 5555 22a4 C13FA0E1 		mov	r3, r1, asr #31
+ 5556 22a8 022063E0 		rsb	r2, r3, r2
+ 5557 22ac 0230A0E1 		mov	r3, r2
+ 5558 22b0 0332A0E1 		mov	r3, r3, asl #4
+ 5559 22b4 033062E0 		rsb	r3, r2, r3
+ 5560 22b8 0331A0E1 		mov	r3, r3, asl #2
+ 5561 22bc 012063E0 		rsb	r2, r3, r1
+ 5562 22c0 FF3002E2 		and	r3, r2, #255
+ 5563 22c4 1B304BE5 		strb	r3, [fp, #-27]
+ 5564              	.L168:
+ 778:../proyecto.c **** 	}
+ 779:../proyecto.c **** 
+ 780:../proyecto.c **** 	parking.plaza[plazaSelecc - 1].end_time = end_time;
+ 5565              		.loc 1 780 0
+ 5566 22c8 48309FE5 		ldr	r3, .L169+8
+ 5567 22cc 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5568 22d0 012043E2 		sub	r2, r3, #1
+ 5569 22d4 40109FE5 		ldr	r1, .L169+12
+ 5570 22d8 0130A0E3 		mov	r3, #1
+ 5571 22dc 8221A0E1 		mov	r2, r2, asl #3
+ 5572 22e0 022081E0 		add	r2, r1, r2
+ 5573 22e4 033082E0 		add	r3, r2, r3
+ 5574 22e8 0310A0E1 		mov	r1, r3
+ 5575 22ec 1C204BE2 		sub	r2, fp, #28
+ 5576 22f0 0730A0E3 		mov	r3, #7
+ 5577 22f4 0100A0E1 		mov	r0, r1
+ 5578 22f8 0210A0E1 		mov	r1, r2
+ 5579 22fc 0320A0E1 		mov	r2, r3
+ 5580 2300 FEFFFFEB 		bl	memcpy
+ 781:../proyecto.c **** }
+ 5581              		.loc 1 781 0
+ 5582 2304 0CD04BE2 		sub	sp, fp, #12
+ 5583 2308 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 5584 230c 1EFF2FE1 		bx	lr
+ 5585              	.L170:
+ 5586              		.align	2
+ 5587              	.L169:
+ 5588 2310 ABAAAAAA 		.word	-1431655765
+ 5589 2314 89888888 		.word	-2004318071
+ 5590 2318 00000000 		.word	plazaSelecc
+ 5591 231c 00000000 		.word	parking
+ 5592              		.cfi_endproc
+ 5593              	.LFE19:
+ 5595              		.section	.rodata
+ 5596 039f 00       		.align	2
+ 5597              	.LC61:
+ 5598 03a0 5469656E 		.ascii	"Tiene una multa de 50\200 \000"
+ 5598      6520756E 
+ 5598      61206D75 
+ 5598      6C746120 
+ 5598      64652035 
+ 5599              		.align	2
+ 5600              	.LC62:
+ 5601 03b8 41637564 		.ascii	"Acuda a ventana para pagar\012\000"
+ 5601      61206120 
+ 5601      76656E74 
+ 5601      616E6120 
+ 5601      70617261 
+ 5602              		.align	2
+ 5603              	.LC60:
+ 5604 03d4 2D2D2D2D 		.ascii	"----- TICKET DE MULTA -----\012\000"
+ 5604      2D205449 
+ 5604      434B4554 
+ 5604      20444520 
+ 5604      4D554C54 
+ 5605 03f1 000000   		.text
+ 5606              		.align	2
+ 5607              		.global	multar
+ 5609              	multar:
+ 5610              	.LFB20:
+ 782:../proyecto.c **** 
+ 783:../proyecto.c **** void multar(uint8 plaza) {
+ 5611              		.loc 1 783 0
+ 5612              		.cfi_startproc
+ 5613              		@ Function supports interworking.
+ 5614              		@ args = 0, pretend = 0, frame = 80
+ 5615              		@ frame_needed = 1, uses_anonymous_args = 0
+ 5616 2320 0DC0A0E1 		mov	ip, sp
+ 5617              	.LCFI40:
+ 5618              		.cfi_def_cfa_register 12
+ 5619 2324 00D82DE9 		stmfd	sp!, {fp, ip, lr, pc}
+ 5620 2328 04B04CE2 		sub	fp, ip, #4
+ 5621              		.cfi_offset 14, -8
+ 5622              		.cfi_offset 13, -12
+ 5623              		.cfi_offset 11, -16
+ 5624              	.LCFI41:
+ 5625              		.cfi_def_cfa 11, 4
+ 5626 232c 50D04DE2 		sub	sp, sp, #80
+ 5627 2330 0030A0E1 		mov	r3, r0
+ 5628 2334 55304BE5 		strb	r3, [fp, #-85]
+ 784:../proyecto.c **** 
+ 785:../proyecto.c **** 	char ticketHeader[] = "----- TICKET DE MULTA -----\n";
+ 5629              		.loc 1 785 0
+ 5630 2338 98309FE5 		ldr	r3, .L172
+ 5631 233c 2CC04BE2 		sub	ip, fp, #44
+ 5632 2340 03E0A0E1 		mov	lr, r3
+ 5633 2344 0F00BEE8 		ldmia	lr!, {r0, r1, r2, r3}
+ 5634 2348 0F00ACE8 		stmia	ip!, {r0, r1, r2, r3}
+ 5635 234c 0F009EE8 		ldmia	lr, {r0, r1, r2, r3}
+ 5636 2350 0700ACE8 		stmia	ip!, {r0, r1, r2}
+ 5637 2354 0030CCE5 		strb	r3, [ip, #0]
+ 786:../proyecto.c **** 	char ticketFooter[] = "----------------------------------\n";
+ 5638              		.loc 1 786 0
+ 5639 2358 7C309FE5 		ldr	r3, .L172+4
+ 5640 235c 50C04BE2 		sub	ip, fp, #80
+ 5641 2360 03E0A0E1 		mov	lr, r3
+ 5642 2364 0F00BEE8 		ldmia	lr!, {r0, r1, r2, r3}
+ 5643 2368 0F00ACE8 		stmia	ip!, {r0, r1, r2, r3}
+ 5644 236c 0F00BEE8 		ldmia	lr!, {r0, r1, r2, r3}
+ 5645 2370 0F00ACE8 		stmia	ip!, {r0, r1, r2, r3}
+ 5646 2374 00309EE5 		ldr	r3, [lr, #0]
+ 5647 2378 00308CE5 		str	r3, [ip, #0]
+ 787:../proyecto.c **** 
+ 788:../proyecto.c **** 	uart0_puts(ticketHeader);              // Encabezado del ticket
+ 5648              		.loc 1 788 0
+ 5649 237c 2C304BE2 		sub	r3, fp, #44
+ 5650 2380 0300A0E1 		mov	r0, r3
+ 5651 2384 FEFFFFEB 		bl	uart0_puts
+ 789:../proyecto.c **** 	uart0_puts("Plaza: ");
+ 5652              		.loc 1 789 0
+ 5653 2388 50009FE5 		ldr	r0, .L172+8
+ 5654 238c FEFFFFEB 		bl	uart0_puts
+ 790:../proyecto.c **** 	uart0_putint(plazaSelecc);                    // Número de plaza
+ 5655              		.loc 1 790 0
+ 5656 2390 4C309FE5 		ldr	r3, .L172+12
+ 5657 2394 0030D3E5 		ldrb	r3, [r3, #0]	@ zero_extendqisi2
+ 5658 2398 0300A0E1 		mov	r0, r3
+ 5659 239c FEFFFFEB 		bl	uart0_putint
+ 791:../proyecto.c **** 	uart0_puts("\n");
+ 5660              		.loc 1 791 0
+ 5661 23a0 40009FE5 		ldr	r0, .L172+16
+ 5662 23a4 FEFFFFEB 		bl	uart0_puts
+ 792:../proyecto.c **** 
+ 793:../proyecto.c **** 	uart0_puts("Tiene una multa de 50€ ");
+ 5663              		.loc 1 793 0
+ 5664 23a8 3C009FE5 		ldr	r0, .L172+20
+ 5665 23ac FEFFFFEB 		bl	uart0_puts
+ 794:../proyecto.c **** 	uart0_puts("\n");
+ 5666              		.loc 1 794 0
+ 5667 23b0 30009FE5 		ldr	r0, .L172+16
+ 5668 23b4 FEFFFFEB 		bl	uart0_puts
+ 795:../proyecto.c **** 
+ 796:../proyecto.c **** 	uart0_puts("Acuda a ventana para pagar\n"); // Mensaje adicional
+ 5669              		.loc 1 796 0
+ 5670 23b8 30009FE5 		ldr	r0, .L172+24
+ 5671 23bc FEFFFFEB 		bl	uart0_puts
+ 797:../proyecto.c **** 	uart0_puts(ticketFooter);              // Pie del ticket
+ 5672              		.loc 1 797 0
+ 5673 23c0 50304BE2 		sub	r3, fp, #80
+ 5674 23c4 0300A0E1 		mov	r0, r3
+ 5675 23c8 FEFFFFEB 		bl	uart0_puts
+ 798:../proyecto.c **** }
+ 5676              		.loc 1 798 0
+ 5677 23cc 0CD04BE2 		sub	sp, fp, #12
+ 5678 23d0 00689DE8 		ldmfd	sp, {fp, sp, lr}
+ 5679 23d4 1EFF2FE1 		bx	lr
+ 5680              	.L173:
+ 5681              		.align	2
+ 5682              	.L172:
+ 5683 23d8 D4030000 		.word	.LC60
+ 5684 23dc C4000000 		.word	.LC7
+ 5685 23e0 60000000 		.word	.LC8
+ 5686 23e4 00000000 		.word	plazaSelecc
+ 5687 23e8 68000000 		.word	.LC9
+ 5688 23ec A0030000 		.word	.LC61
+ 5689 23f0 B8030000 		.word	.LC62
+ 5690              		.cfi_endproc
+ 5691              	.LFE20:
+ 5693              		.bss
+ 5694              		.align	2
+ 5695              	tiempoActual.4383:
+ 5696 0000 00000000 		.space	7
+ 5696      000000
+ 5697              		.data
+ 5700              	init.4307:
+ 5701 0000 01       		.byte	1
+ 5702              		.bss
+ 5703              	state.4311:
+ 5704 0007 00       		.space	1
+ 5705              		.align	2
+ 5706              	ticks.4312:
+ 5707 0008 00000000 		.space	4
+ 5708              		.data
+ 5711              	init.4289:
+ 5712 0001 01       		.byte	1
+ 5713              		.bss
+ 5714              	state.4294:
+ 5715 000c 00       		.space	1
+ 5716              		.data
+ 5719              	init.4276:
+ 5720 0002 01       		.byte	1
+ 5721              		.bss
+ 5722              	state.4281:
+ 5723 000d 00       		.space	1
+ 5724 000e 0000     		.align	2
+ 5725              	tiempoActual.4270:
+ 5726 0010 00000000 		.space	7
+ 5726      000000
+ 5727 0017 00       		.align	2
+ 5728              	bufferFechaHora.4271:
+ 5729 0018 00000000 		.space	40
+ 5729      00000000 
+ 5729      00000000 
+ 5729      00000000 
+ 5729      00000000 
+ 5730              		.align	2
+ 5731              	diaSemana.4272:
+ 5732 0040 00000000 		.space	4
+ 5733              		.data
+ 5736              	init.4237:
+ 5737 0003 01       		.byte	1
+ 5738              		.bss
+ 5739              		.align	1
+ 5740              	credit.4245:
+ 5741 0044 0000     		.space	2
+ 5742              	state.4244:
+ 5743 0046 00       		.space	1
+ 5744 0047 00       		.align	1
+ 5745              	ticks.4246:
+ 5746 0048 0000     		.space	2
+ 5747 004a 0000     		.text
+ 5748              	.Letext0:
+DEFINED SYMBOLS
+                            *ABS*:00000000 proyecto.c
+                            *COM*:00000044 parking
+                            *COM*:00000001 plazaSelecc
+                            *COM*:00000002 coinAcceptorMsg
+                            *COM*:00000006 tsPressedMsg
+                            *COM*:00000002 coinsMoverMsg
+                            *COM*:00000001 printTicketFlag
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2146   .text:00000000 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2149   .text:00000000 main
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3481   .text:00000cec setup
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2230   .text:000000a0 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3093   .text:00000970 tsScanTask
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3199   .text:00000a5c coinsAcceptorTask
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2263   .text:000000bc mainTask
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3351   .text:00000bbc coinsMoverTask
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3045   .text:0000091c clockTask
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2849   .text:00000760 ticketPrinterTask
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2241   .rodata:00000000 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2260   .text:000000bc $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3614   .text:00000dc8 plotWelcomeScreen
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2309   .text:0000011c $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2316   .text:00000130 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4646   .text:00001978 idiomaScreen
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4551   .text:000018b4 idiomaSeleccionado
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4339   .text:00001654 plotSelectionScreen
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4697   .text:000019d8 plazaSeleccionada
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5334   .text:00002028 plotOccupiedScreen
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5189   .text:00001ed4 liberar
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4985   .text:00001c68 plotPaymentScreen
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5481   .text:000021d0 tiempoOcupado
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3925   .text:000010e8 convertirFechaHora
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2827   .text:00000720 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5736   .data:00000003 init.4237
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5740   .bss:00000044 credit.4245
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5742   .bss:00000046 state.4244
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5745   .bss:00000048 ticks.4246
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2846   .text:00000760 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2912   .text:0000079c printTicket
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2885   .text:00000798 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:2909   .text:0000079c $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3031   .text:000008fc $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3042   .text:0000091c $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3084   .text:00000964 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5725   .bss:00000010 tiempoActual.4270
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5728   .bss:00000018 bufferFechaHora.4271
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5731   .bss:00000040 diaSemana.4272
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3090   .text:00000970 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3188   .text:00000a48 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5719   .data:00000002 init.4276
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5722   .bss:0000000d state.4281
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3196   .text:00000a5c $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3260   .text:00000ae8 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3266   .text:00000af8 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3342   .text:00000bb0 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5711   .data:00000001 init.4289
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5714   .bss:0000000c state.4294
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3348   .text:00000bbc $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3471   .text:00000cdc $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5700   .data:00000000 init.4307
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5703   .bss:00000007 state.4311
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5706   .bss:00000008 ticks.4312
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3478   .text:00000cec $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3565   .text:00000db4 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3611   .text:00000dc8 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3792   .text:00001000 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3835   .text:00001038 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3838   .text:00001038 obtenerDiaSemana
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3864   .text:00001060 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3873   .text:0000107c $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3911   .text:000010c8 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:3922   .text:000010e8 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4323   .text:0000164c $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4336   .text:00001654 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4541   .text:000018a4 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4548   .text:000018b4 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4626   .text:0000196c $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4643   .text:00001978 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4688   .text:000019cc $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4694   .text:000019d8 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4924   .text:00001c60 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:4982   .text:00001c68 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5162   .text:00001e80 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5186   .text:00001ed4 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5609   .text:00002320 multar
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5304   .text:00002018 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5695   .bss:00000000 tiempoActual.4383
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5331   .text:00002028 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5465   .text:000021a8 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5478   .text:000021d0 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5588   .text:00002310 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5606   .text:00002320 $a
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5683   .text:000023d8 $d
+C:\Users\VUser\AppData\Local\Temp\cc3l3dqY.s:5694   .bss:00000000 $d
+                     .debug_frame:00000010 $d
+
+UNDEFINED SYMBOLS
+sys_init
+leds_init
+segs_init
+uart0_init
+rtc_init
+timers_init
+keypad_init
+lcd_init
+ts_init
+lcd_on
+ts_on
+scheduler_init
+create_task
+timer0_open_tick
+sleep
+dispacher
+scheduler
+lcd_clear
+sw_delay_s
+rtc_gettime
+memcpy
+lcd_puts_x2
+lcd_putint
+lcd_puts
+uart0_puts
+uart0_putint
+ts_pressed
+ts_getpos
+keypad_pressed
+keypad_scan
+segs_putchar
+led_on
+segs_off
+led_off
+lcd_draw_box
+lcd_putint_x2
+lcd_putchar_x2
